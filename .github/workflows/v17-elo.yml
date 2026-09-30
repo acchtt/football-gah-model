@@ -1,0 +1,42 @@
+name: GAH v1.7 Elo prior
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/elo.py"
+      - "tests/test_elo.py"
+      - "benchmark_v17_elo.py"
+      - ".github/workflows/v17-elo.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        competition:
+          - EPL
+          - BUNDESLIGA
+          - LA_LIGA
+          - SERIE_A
+          - LIGUE_1
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+      - name: Run ${{ matrix.competition }} Elo benchmark
+        run: python benchmark_v17_elo.py --competition "${{ matrix.competition }}"
