@@ -21,7 +21,11 @@ from gah.calibration import (
 from gah.data import load_openfootball_league_seasons
 from gah.markets import price_total, settle_total
 from gah.model import DixonColesModel
-from gah.residual import ConditionalTotalTiltModel, TeamResidualState
+from gah.residual import (
+    ConditionalTotalTiltModel,
+    TeamResidualState,
+    fit_residual_scale,
+)
 from gah.totals import (
     absolute_error_optimal_point,
     fit_total_tilt_beta,
@@ -59,6 +63,10 @@ def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     residual_actual_totals: list[int] = []
     residual_model: ConditionalTotalTiltModel | None = None
     last_residual_fit_n = 0
+
+    scale_raw_betas: list[float] = []
+    scale_base_pmfs: list[np.ndarray] = []
+    scale_actual_totals: list[int] = []
 
     line_rows: list[dict] = []
     match_rows: list[dict] = []
@@ -146,11 +154,22 @@ def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             residual_model = candidate
             last_residual_fit_n = len(residual_features)
 
-        residual_beta = (
+        raw_residual_beta = (
             residual_model.predict_beta(features)
             if residual_model is not None
             else 0.0
         )
+
+        residual_scale = 0.0
+        if len(scale_raw_betas) >= 100:
+            start = max(0, len(scale_raw_betas) - 380)
+            residual_scale = fit_residual_scale(
+                scale_raw_betas[start:],
+                scale_base_pmfs[start:],
+                scale_actual_totals[start:],
+            )
+
+        residual_beta = residual_scale * raw_residual_beta
         v15_matrix = tilt_score_matrix_by_total(v13_matrix, residual_beta)
         v15_pmf = matrix_to_total_pmf(v15_matrix)
 
@@ -162,6 +181,8 @@ def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             {
                 "season": target["season"],
                 "global_beta": global_beta,
+                "raw_residual_beta": raw_residual_beta,
+                "residual_scale": residual_scale,
                 "residual_beta": residual_beta,
                 "blend_weight": blend_weight,
                 "v13_nll": _nll(pmf_probability(v13_pmf, actual_total)),
@@ -202,6 +223,11 @@ def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         residual_features.append(features)
         residual_pmfs.append(v13_pmf)
         residual_actual_totals.append(actual_total)
+
+        if residual_model is not None:
+            scale_raw_betas.append(raw_residual_beta)
+            scale_base_pmfs.append(v13_pmf)
+            scale_actual_totals.append(actual_total)
 
         residual_state.update(
             target["home_team"],
@@ -262,7 +288,8 @@ def build_report(
         "",
         "Candidate experiment. v1.3 remains the base totals distribution; the new",
         "layer applies a match-specific conditional exponential tilt learned only",
-        "from prior OOS team residual features.",
+        "from prior OOS team residual features. A second OOS calibrator learns how",
+        "much of the raw residual amplitude to trust, including the option of zero.",
         "",
         "## Aggregate",
         "",
@@ -278,8 +305,10 @@ def build_report(
         f"{matches['v15_point_mae'].mean():.4f} | — | "
         f"{100.0*(matches['v13_point_mae'].mean()-matches['v15_point_mae'].mean())/matches['v13_point_mae'].mean():+.2f}% | — |",
         "",
-        f"Residual-active predictions: **{len(active)}/{len(matches)}**",
-        f"Mean |residual beta| when active: **{active['residual_beta'].abs().mean() if len(active) else 0.0:.4f}**",
+        f"Residual-active predictions after calibration: **{len(active)}/{len(matches)}**",
+        f"Mean raw |beta|: **{matches['raw_residual_beta'].abs().mean():.4f}**",
+        f"Mean residual scale: **{matches['residual_scale'].mean():.3f}**",
+        f"Mean calibrated |beta| when active: **{active['residual_beta'].abs().mean() if len(active) else 0.0:.4f}**",
         f"Lines improved vs v1.3: **{int((summary['v15_brier'] < summary['v13_brier']).sum())}/{len(summary)}**",
         f"Lines beating naive: **{int((summary['v15_brier'] < summary['naive_brier']).sum())}/{len(summary)}**",
         "",
