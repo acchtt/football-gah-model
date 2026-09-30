@@ -7,6 +7,7 @@ on:
       - "gah/selection.py"
       - "tests/test_selection.py"
       - "benchmark_v20_selection.py"
+      - "benchmark_v20_global_board.py"
       - ".github/workflows/v20-selection.yml"
   workflow_dispatch:
 
@@ -41,3 +42,21 @@ jobs:
         run: pytest -q
       - name: Run selection benchmark
         run: python benchmark_v20_selection.py --competition "${{ matrix.competition }}"
+
+
+  global-board:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+      - name: Run global cross-league board
+        run: python benchmark_v20_global_board.py
