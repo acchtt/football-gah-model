@@ -8,7 +8,11 @@ from scipy.stats import poisson
 
 from .model import DixonColesModel
 from .markets import price_total, price_handicap
-from .totals import absolute_error_optimal_point, matrix_to_total_pmf
+from .totals import (
+    absolute_error_optimal_point,
+    fit_total_tilt_beta,
+    matrix_to_total_pmf,
+)
 
 
 def _independent_poisson_matrix(home_rate: float, away_rate: float, max_goals: int = 10) -> np.ndarray:
@@ -314,3 +318,107 @@ def fit_next_total_blend_weight(
         model_probs[start:].tolist(),
         naive_probs[start:].tolist(),
     )
+
+
+def fit_next_total_calibration(
+    df: pd.DataFrame,
+    half_life_days: float = 180.0,
+    min_train_matches: int = 380,
+    refit_every: int = 20,
+    min_history: int = 100,
+    window: int = 380,
+) -> tuple[float, float]:
+    """
+    Fit the promoted totals calibration for the NEXT match.
+
+    Returns:
+      (blend_weight, tilt_beta)
+
+    Both parameters are learned exclusively from historical out-of-sample
+    predictions. The historical blend used to fit beta is itself fitted only
+    from information that was available before each historical prediction.
+    """
+    data = df.copy()
+    data["match_date"] = pd.to_datetime(data["match_date"], utc=True)
+    data = data.sort_values("match_date").reset_index(drop=True)
+
+    if len(data) <= min_train_matches:
+        return 1.0, 0.0
+
+    model = None
+    last_fit_i = None
+
+    hist_model_prob: list[float] = []
+    hist_naive_prob: list[float] = []
+    hist_base_pmfs: list[np.ndarray] = []
+    hist_actual_totals: list[int] = []
+
+    for i in range(min_train_matches, len(data)):
+        target = data.iloc[i]
+        train = data.iloc[:i]
+
+        known = set(train["home_team"]).union(train["away_team"])
+        if target["home_team"] not in known or target["away_team"] not in known:
+            continue
+
+        needs_refit = (
+            model is None
+            or last_fit_i is None
+            or (i - last_fit_i) >= refit_every
+            or target["home_team"] not in model.team_to_idx_
+            or target["away_team"] not in model.team_to_idx_
+        )
+        if needs_refit:
+            model = DixonColesModel(half_life_days=half_life_days, max_goals=10)
+            model.fit(train, as_of=train["match_date"].max())
+            last_fit_i = i
+
+        pred = model.predict(target["home_team"], target["away_team"])
+        raw_matrix = pred["score_matrix"]
+
+        naive_home_rate = float(train["home_goals"].mean())
+        naive_away_rate = float(train["away_goals"].mean())
+        naive_matrix = _independent_poisson_matrix(
+            naive_home_rate,
+            naive_away_rate,
+            max_goals=10,
+        )
+
+        blend_weight = 1.0
+        if len(hist_model_prob) >= min_history:
+            start = max(0, len(hist_model_prob) - window)
+            blend_weight = _fit_total_blend_weight(
+                hist_model_prob[start:],
+                hist_naive_prob[start:],
+            )
+
+        base_matrix = (
+            blend_weight * raw_matrix
+            + (1.0 - blend_weight) * naive_matrix
+        )
+        base_matrix = base_matrix / base_matrix.sum()
+        base_pmf = matrix_to_total_pmf(base_matrix)
+
+        actual_total = int(target["home_goals"] + target["away_goals"])
+
+        # Update only after this historical prediction has been formed.
+        hist_model_prob.append(_total_probability(raw_matrix, actual_total))
+        hist_naive_prob.append(_total_probability(naive_matrix, actual_total))
+        hist_base_pmfs.append(base_pmf)
+        hist_actual_totals.append(actual_total)
+
+    if len(hist_model_prob) < min_history:
+        return 1.0, 0.0
+
+    start = max(0, len(hist_model_prob) - window)
+    next_weight = _fit_total_blend_weight(
+        hist_model_prob[start:],
+        hist_naive_prob[start:],
+    )
+
+    tilt_start = max(0, len(hist_base_pmfs) - window)
+    next_beta = fit_total_tilt_beta(
+        hist_base_pmfs[tilt_start:],
+        hist_actual_totals[tilt_start:],
+    )
+    return float(next_weight), float(next_beta)
