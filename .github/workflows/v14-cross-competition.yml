@@ -1,13 +1,6 @@
 name: GAH v1.4 cross-competition validation
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "gah/**"
-      - "tests/**"
-      - "benchmark_v14_league.py"
-      - ".github/workflows/v14-cross-competition.yml"
   workflow_dispatch:
 
 permissions:
