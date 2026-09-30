@@ -12,6 +12,7 @@ from gah.data import load_openfootball_epl_seasons
 from gah.markets import price_handicap
 from gah.model import DixonColesModel
 from gah.totals import (
+    absolute_error_optimal_point,
     matrix_to_total_pmf,
     mix_pmfs,
     negative_binomial_total_pmf,
@@ -124,9 +125,11 @@ def run_experiment(data: pd.DataFrame) -> pd.DataFrame:
                 "match_date": target["match_date"],
                 "actual_total": actual_total,
                 "v11_mean": pmf_mean(pmf_v11),
+                "v11_median": absolute_error_optimal_point(pmf_v11),
                 "regime_pois_mean": pmf_mean(pmf_regime_pois),
                 "regime_nb_mean": pmf_mean(pmf_regime_nb),
                 "v11_mae": abs(pmf_mean(pmf_v11) - actual_total),
+                "v11_median_mae": abs(absolute_error_optimal_point(pmf_v11) - actual_total),
                 "regime_pois_mae": abs(pmf_mean(pmf_regime_pois) - actual_total),
                 "regime_nb_mae": abs(pmf_mean(pmf_regime_nb) - actual_total),
                 "v11_nll": _nll(pmf_probability(pmf_v11, actual_total)),
@@ -171,6 +174,8 @@ def build_report(results: pd.DataFrame) -> str:
     rp_mae = _avg(results, "regime_pois_mae")
     rn_mae = _avg(results, "regime_nb_mae")
 
+    v11_median_mae = _avg(results, "v11_median_mae")
+
     v11_nll = _avg(results, "v11_nll")
     rp_nll = _avg(results, "regime_pois_nll")
     rn_nll = _avg(results, "regime_nb_nll")
@@ -199,6 +204,12 @@ def build_report(results: pd.DataFrame) -> str:
         f"| Total NLL ↓ | {v11_nll:.4f} | {rp_nll:.4f} | {rn_nll:.4f} | {improvement(rp_nll, v11_nll):+.2f}% | {improvement(rn_nll, v11_nll):+.2f}% |",
         f"| O2.5 Brier ↓ | {v11_brier:.4f} | {rp_brier:.4f} | {rn_brier:.4f} | {improvement(rp_brier, v11_brier):+.2f}% | {improvement(rn_brier, v11_brier):+.2f}% |",
         "",
+        "## Point-forecast correction",
+        "",
+        f"- v1.1 predictive mean MAE: **{v11_mae:.4f}**",
+        f"- v1.1 predictive median MAE: **{v11_median_mae:.4f}**",
+        f"- Median vs mean improvement: **{improvement(v11_median_mae, v11_mae):+.2f}%**",
+        "",
         f"Mean blend weight on DC — v1.1: **{_avg(results, 'v11_weight'):.3f}**",
         f"Mean blend weight on DC — Regime-Poisson: **{_avg(results, 'regime_pois_weight'):.3f}**",
         f"Mean blend weight on DC — Regime-NB: **{_avg(results, 'regime_nb_weight'):.3f}**",
@@ -212,14 +223,15 @@ def build_report(results: pd.DataFrame) -> str:
         "",
         "## By season",
         "",
-        "| Season | v1.1 MAE | RP MAE | NB MAE | v1.1 O2.5 | RP O2.5 | NB O2.5 |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| Season | v1.1 mean MAE | v1.1 median MAE | RP MAE | NB MAE | v1.1 O2.5 | RP O2.5 | NB O2.5 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
 
     for season, g in results.groupby("season", sort=True):
         lines.append(
             f"| {season} | "
             f"{_avg(g, 'v11_mae'):.4f} | "
+            f"{_avg(g, 'v11_median_mae'):.4f} | "
             f"{_avg(g, 'regime_pois_mae'):.4f} | "
             f"{_avg(g, 'regime_nb_mae'):.4f} | "
             f"{_avg(g, 'v11_o25_brier'):.4f} | "
