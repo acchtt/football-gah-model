@@ -130,3 +130,76 @@ def recency_weighted_total_stats(
     mean = float(np.dot(weights, totals) / wsum)
     variance = float(np.dot(weights, np.square(totals - mean)) / wsum)
     return mean, variance
+
+
+def tilt_score_matrix_by_total(matrix: np.ndarray, beta: float) -> np.ndarray:
+    """
+    Exponential calibration tilt by total goals.
+
+    p'(h,a) ∝ p(h,a) * exp(beta * (h+a))
+    Positive beta moves probability toward higher-scoring outcomes while
+    preserving the home/away split conditional on a given total.
+    """
+    rows, cols = matrix.shape
+    hg = np.arange(rows, dtype=float)[:, None]
+    ag = np.arange(cols, dtype=float)[None, :]
+    weights = np.exp(float(beta) * (hg + ag))
+    out = np.asarray(matrix, dtype=float) * weights
+    total = float(out.sum())
+    if total <= 0:
+        raise ValueError("Tilted score matrix has no probability mass.")
+    return out / total
+
+
+def fit_total_tilt_beta(
+    pmfs: list[np.ndarray],
+    actual_totals: list[int],
+    bounds: tuple[float, float] = (-0.25, 0.25),
+) -> float:
+    """
+    Fit one exponential-tilt parameter by total-goal log likelihood.
+
+    Inputs must be historical out-of-sample predictive PMFs. This function
+    itself is agnostic to time; callers are responsible for supplying only
+    information available before the prediction being calibrated.
+    """
+    from scipy.optimize import minimize_scalar
+
+    if not pmfs:
+        return 0.0
+    if len(pmfs) != len(actual_totals):
+        raise ValueError("pmfs and actual_totals must have equal length.")
+
+    max_len = max(len(p) for p in pmfs)
+    matrix = np.zeros((len(pmfs), max_len), dtype=float)
+    for i, pmf in enumerate(pmfs):
+        matrix[i, :len(pmf)] = pmf
+
+    totals = np.asarray(actual_totals, dtype=int)
+    goals = np.arange(max_len, dtype=float)
+
+    base_actual = np.array(
+        [
+            matrix[i, y] if 0 <= y < max_len else 1e-12
+            for i, y in enumerate(totals)
+        ],
+        dtype=float,
+    )
+
+    def objective(beta: float) -> float:
+        weights = np.exp(float(beta) * goals)
+        z = matrix @ weights
+        tilted_actual = (
+            np.clip(base_actual, 1e-12, 1.0)
+            * np.exp(float(beta) * totals)
+            / np.clip(z, 1e-12, None)
+        )
+        return float(-np.log(np.clip(tilted_actual, 1e-12, 1.0)).mean())
+
+    result = minimize_scalar(
+        objective,
+        bounds=bounds,
+        method="bounded",
+        options={"xatol": 1e-5},
+    )
+    return float(result.x)
