@@ -1,0 +1,35 @@
+name: EPL v1.2 totals experiment
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/**"
+      - "tests/**"
+      - "benchmark_epl_v12.py"
+      - ".github/workflows/epl-v12-totals.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+
+      - name: Run GAH v1.2 benchmark
+        run: python benchmark_epl_v12.py --output benchmarks/epl_v12_regime_overdispersion.md
