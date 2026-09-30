@@ -1,11 +1,11 @@
-# Football GAH v1.2
+# Football GAH v1.3
 
 A code-first baseline for forecasting:
 
 - **Goal totals** (Asian O/U lines)
 - **Asian handicap** (home/away, including quarter lines)
 
-The model first predicts a **full score distribution** using a time-decayed Dixon-Coles model. Asian handicap is priced directly from that distribution. Totals use a leakage-safe online blend between the Dixon-Coles distribution and the historical league scoring distribution; the displayed point total is the predictive median.
+The model first predicts a **full score distribution** using a time-decayed Dixon-Coles model. Asian handicap is priced directly from that distribution. Totals use a leakage-safe online blend between Dixon-Coles and the historical league scoring distribution, followed by a leakage-safe total-goal calibration tilt; the displayed point total is the predictive median.
 
 ## Why this exists
 
@@ -134,11 +134,21 @@ Market calibration and ROI/CLV evaluation should be layered on after a bookmaker
 - Asian handicap remains pure Dixon-Coles
 - Regime-Poisson and negative-binomial experiments rejected
 
-### GAH v1.3
-- Probability reliability plots and calibration curves
-- Calibration across multiple total/AH lines, not only O2.5 and Home -0.5
-- Competition-specific validation
-- Faster persisted calibration artifacts for live prediction
+### GAH v1.3 — promoted
+- Full settlement calibration across 11 Asian totals lines
+- Full settlement calibration across 17 Asian handicap lines
+- AH beat naive on all 17 tested lines
+- Totals probability tilt improved every tested totals line
+- Multi-line totals Brier improved from 0.5399 to 0.5385
+- Exact-total NLL improved from 1.9027 to 1.9009
+- Median total MAE preserved at 1.2987
+- Production prediction CLI uses the promoted blend + tilt for totals
+
+### GAH v1.4
+- Competition-specific validation beyond EPL
+- Persist calibration artifacts so live prediction does not replay full history
+- Reliability plots by competition and line band
+- Decide whether calibration parameters should be global or competition-specific
 
 ### GAH v2
 - xG
