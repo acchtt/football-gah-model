@@ -38,6 +38,8 @@ jobs:
         run: pip install -r requirements.txt pytest
 
       - name: Run tests
+        env:
+          PYTHONPATH: .
         run: pytest -q
 
       - name: Run EPL baseline
