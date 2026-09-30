@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import poisson
 
-from gah.residual import ConditionalTotalTiltModel, TeamResidualState
+from gah.residual import ConditionalTotalTiltModel, TeamResidualState, fit_residual_scale
 
 
 def test_team_state_is_leakage_safe_and_updates_after_match():
@@ -58,3 +58,30 @@ def test_conditional_tilt_learns_positive_feature_for_high_totals():
 
     assert model.predict_beta(np.array([1.0])) > 0.0
     assert model.predict_beta(np.array([-1.0])) < 0.0
+
+
+def test_residual_scale_disables_harmful_adjustments():
+    goals = np.arange(7)
+    base = poisson.pmf(goals, 2.5)
+    base = base / base.sum()
+
+    # Positive betas are harmful when every observed total is low.
+    scale = fit_residual_scale(
+        raw_betas=[0.15] * 30,
+        base_pmfs=[base.copy() for _ in range(30)],
+        actual_totals=[1] * 30,
+    )
+    assert scale == 0.0
+
+
+def test_residual_scale_keeps_helpful_adjustments():
+    goals = np.arange(7)
+    base = poisson.pmf(goals, 2.0)
+    base = base / base.sum()
+
+    scale = fit_residual_scale(
+        raw_betas=[0.15] * 30,
+        base_pmfs=[base.copy() for _ in range(30)],
+        actual_totals=[4] * 30,
+    )
+    assert scale > 0.5
