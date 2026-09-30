@@ -251,3 +251,74 @@ def recency_weighted_home_away_rates(
         float(np.dot(weights, home) / weight_sum),
         float(np.dot(weights, away) / weight_sum),
     )
+
+
+def fit_total_tilt_beta_brier(
+    pmfs: list[np.ndarray],
+    actual_totals: list[int],
+    lines: tuple[float, ...] = (
+        1.5, 1.75, 2.0, 2.25, 2.5, 2.75,
+        3.0, 3.25, 3.5, 3.75, 4.0,
+    ),
+    bounds: tuple[float, float] = (-0.25, 0.25),
+) -> float:
+    """
+    Fit one coherent total-goal exponential tilt for Asian-line Brier loss.
+
+    The score distribution is collapsed to total-goal PMFs. For each candidate
+    beta, the same tilt is applied to every total outcome, then scored across
+    the full Asian totals line grid using the five settlement outcomes.
+    """
+    from scipy.optimize import minimize_scalar
+    from .markets import SETTLEMENT_CATEGORIES, settle_total
+
+    if not pmfs:
+        return 0.0
+    if len(pmfs) != len(actual_totals):
+        raise ValueError("pmfs and actual_totals must have equal length.")
+
+    max_len = max(len(p) for p in pmfs)
+    base = np.zeros((len(pmfs), max_len), dtype=float)
+    for i, pmf in enumerate(pmfs):
+        p = np.asarray(pmf, dtype=float)
+        base[i, :len(p)] = p / p.sum()
+
+    goals = np.arange(max_len, dtype=float)
+    actual = np.asarray(actual_totals, dtype=int)
+    categories = tuple(SETTLEMENT_CATEGORIES)
+
+    settlement_maps: list[np.ndarray] = []
+    observed: list[np.ndarray] = []
+    for line in lines:
+        mapping = np.zeros((max_len, len(categories)), dtype=float)
+        for total in range(max_len):
+            category = settle_total(total, float(line), "over")
+            mapping[total, categories.index(category)] = 1.0
+        settlement_maps.append(mapping)
+
+        y = np.zeros((len(actual), len(categories)), dtype=float)
+        for i, total in enumerate(actual):
+            category = settle_total(int(total), float(line), "over")
+            y[i, categories.index(category)] = 1.0
+        observed.append(y)
+
+    def objective(beta: float) -> float:
+        weights = np.exp(float(beta) * goals)
+        tilted = base * weights[None, :]
+        tilted /= np.clip(tilted.sum(axis=1, keepdims=True), 1e-12, None)
+
+        loss = 0.0
+        count = 0
+        for mapping, y in zip(settlement_maps, observed):
+            predicted = tilted @ mapping
+            loss += float(np.square(predicted - y).sum())
+            count += len(actual)
+        return loss / max(count, 1)
+
+    result = minimize_scalar(
+        objective,
+        bounds=bounds,
+        method="bounded",
+        options={"xatol": 1e-5},
+    )
+    return float(result.x)
