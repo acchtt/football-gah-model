@@ -203,3 +203,51 @@ def fit_total_tilt_beta(
         options={"xatol": 1e-5},
     )
     return float(result.x)
+
+
+def recency_weighted_home_away_rates(
+    train: pd.DataFrame,
+    as_of: pd.Timestamp,
+    half_life_days: float | None,
+    recent_matches: int | None = 760,
+) -> tuple[float, float]:
+    """
+    Leakage-safe league baseline for home/away goals.
+
+    half_life_days=None gives the unweighted historical mean. Otherwise older
+    matches receive exponentially decaying weight.
+    """
+    hist = train.sort_values("match_date")
+    if recent_matches is not None:
+        hist = hist.tail(int(recent_matches))
+    if hist.empty:
+        raise ValueError("No matches available for league-rate estimation.")
+
+    if half_life_days is None:
+        return (
+            float(hist["home_goals"].mean()),
+            float(hist["away_goals"].mean()),
+        )
+
+    dates = pd.to_datetime(hist["match_date"], utc=True)
+    as_of = pd.Timestamp(as_of)
+    if as_of.tzinfo is None:
+        as_of = as_of.tz_localize("UTC")
+    else:
+        as_of = as_of.tz_convert("UTC")
+
+    age_days = (as_of - dates).dt.total_seconds().to_numpy() / 86400.0
+    age_days = np.maximum(age_days, 0.0)
+    weights = np.exp(
+        -np.log(2.0) * age_days / max(float(half_life_days), 1e-9)
+    )
+    weight_sum = float(weights.sum())
+    if weight_sum <= 0:
+        raise ValueError("No positive league-rate weights.")
+
+    home = hist["home_goals"].to_numpy(dtype=float)
+    away = hist["away_goals"].to_numpy(dtype=float)
+    return (
+        float(np.dot(weights, home) / weight_sum),
+        float(np.dot(weights, away) / weight_sum),
+    )
