@@ -1,0 +1,43 @@
+name: GAH v2.0 selection screen
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/selection.py"
+      - "tests/test_selection.py"
+      - "benchmark_v20_selection.py"
+      - ".github/workflows/v20-selection.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        competition:
+          - EPL
+          - BUNDESLIGA
+          - LA_LIGA
+          - SERIE_A
+          - LIGUE_1
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+      - name: Run selection benchmark
+        run: python benchmark_v20_selection.py --competition "${{ matrix.competition }}"
