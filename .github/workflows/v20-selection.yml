@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - "gah/selection.py"
+      - "gah/reliability.py"
       - "tests/test_selection.py"
+      - "tests/test_reliability.py"
       - "benchmark_v20_selection.py"
       - "benchmark_v20_global_board.py"
       - ".github/workflows/v20-selection.yml"
