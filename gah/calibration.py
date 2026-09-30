@@ -102,3 +102,41 @@ def calibration_bias(
     if len(p) == 0:
         return 0.0
     return float(p.mean() - y.mean())
+
+
+def use_model_by_paired_loss(
+    model_losses: list[float] | np.ndarray,
+    baseline_losses: list[float] | np.ndarray,
+    min_history: int = 100,
+    z_threshold: float = 1.0,
+    window: int | None = 380,
+) -> bool:
+    """
+    Conservative sequential reliability gate.
+
+    Keep the model unless prior paired out-of-sample losses show it is worse
+    than the baseline by more than z_threshold standard errors. Losses must be
+    one aggregate value per historical prediction, not repeated line rows.
+    """
+    model = np.asarray(model_losses, dtype=float)
+    baseline = np.asarray(baseline_losses, dtype=float)
+    if model.shape != baseline.shape:
+        raise ValueError("model_losses and baseline_losses must have equal shape.")
+    if len(model) < int(min_history):
+        return True
+
+    if window is not None:
+        start = max(0, len(model) - int(window))
+        model = model[start:]
+        baseline = baseline[start:]
+
+    diff = model - baseline
+    mean_diff = float(diff.mean())
+    if len(diff) < 2:
+        return mean_diff <= 0.0
+
+    se = float(diff.std(ddof=1) / np.sqrt(len(diff)))
+    if se <= 1e-15:
+        return mean_diff <= 0.0
+
+    return not (mean_diff > float(z_threshold) * se)
