@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "gah/**"
+      - "tests/**"
       - "benchmark_epl.py"
       - "requirements.txt"
       - ".github/workflows/epl-baseline.yml"
@@ -26,7 +27,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt pytest
+
+      - name: Run tests
+        run: pytest -q
 
       - name: Run EPL baseline
         run: python benchmark_epl.py --output benchmarks/epl_baseline.md
