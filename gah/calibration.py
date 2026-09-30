@@ -140,3 +140,35 @@ def use_model_by_paired_loss(
         return mean_diff <= 0.0
 
     return not (mean_diff > float(z_threshold) * se)
+
+
+def fit_brier_blend_weight(
+    model_vectors: list[np.ndarray] | np.ndarray,
+    baseline_vectors: list[np.ndarray] | np.ndarray,
+    observed_vectors: list[np.ndarray] | np.ndarray,
+) -> float:
+    """
+    Closed-form mixture weight minimizing historical multiclass Brier loss.
+
+    Each row is one settlement-probability vector for one market observation.
+    The returned weight is clipped to [0, 1]:
+      1.0 = pure model
+      0.0 = pure baseline
+    """
+    model = np.asarray(model_vectors, dtype=float)
+    baseline = np.asarray(baseline_vectors, dtype=float)
+    observed = np.asarray(observed_vectors, dtype=float)
+
+    if model.shape != baseline.shape or model.shape != observed.shape:
+        raise ValueError("model, baseline, and observed arrays must have equal shape.")
+    if model.size == 0:
+        return 1.0
+
+    delta = model - baseline
+    residual = baseline - observed
+    denom = float(np.square(delta).sum())
+    if denom <= 1e-15:
+        return 1.0
+
+    weight = -float((residual * delta).sum()) / denom
+    return float(np.clip(weight, 0.0, 1.0))
