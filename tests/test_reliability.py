@@ -45,3 +45,38 @@ def test_residual_model_learns_positive_edge_signal():
         market_probability=0.50,
     )
     assert high_p > low_p
+
+
+def test_fit_minimum_counts_active_settlements_not_pushes():
+    active = []
+    for i in range(500):
+        active.append(
+            {
+                "market": "AH",
+                "line": -0.5,
+                "pure_probability": 0.56 if i % 2 == 0 else 0.44,
+                "market_probability": 0.50,
+                "actual_category": "full_win" if i % 2 == 0 else "full_loss",
+            }
+        )
+    pushes = [
+        {
+            "market": "AH",
+            "line": 0.0,
+            "pure_probability": 0.50,
+            "market_probability": 0.50,
+            "actual_category": "push",
+        }
+        for _ in range(100)
+    ]
+
+    # 600 total rows, but exactly 500 active settlements: valid.
+    MarketResidualReliability(l2=10.0).fit(active + pushes)
+
+    # 599 total rows, but only 499 active settlements: invalid.
+    try:
+        MarketResidualReliability(l2=10.0).fit(active[:-1] + pushes)
+    except ValueError as exc:
+        assert "500 prior active-settlement rows" in str(exc)
+    else:
+        raise AssertionError("Expected active-settlement minimum to be enforced")
