@@ -188,3 +188,82 @@ def fit_lineup_margin_scale(
         options={"xatol": 1e-5},
     )
     return float(result.x)
+
+
+def reshape_score_matrix_by_margin_uncertainty(
+    matrix: np.ndarray,
+    disruption: float,
+    gamma: float,
+) -> np.ndarray:
+    """
+    Change margin dispersion while preserving the base expected margin.
+
+    Positive gamma widens the goal-margin distribution as disruption rises;
+    negative gamma narrows it. A compensating linear margin tilt is solved so
+    the transformed matrix keeps the original expected goal margin.
+    """
+    base = np.asarray(matrix, dtype=float)
+    h, a = np.indices(base.shape)
+    margin = (h - a).astype(float)
+    base_mean = float(np.sum(base * margin))
+    centred_sq = np.square(margin - base_mean)
+    strength = float(gamma) * float(disruption)
+
+    def transformed(lam: float) -> np.ndarray:
+        weights = np.exp(
+            np.clip(strength * centred_sq + float(lam) * margin, -20.0, 20.0)
+        )
+        out = base * weights
+        return out / out.sum()
+
+    def mean_error(lam: float) -> float:
+        out = transformed(lam)
+        return abs(float(np.sum(out * margin)) - base_mean)
+
+    solved = minimize_scalar(
+        mean_error,
+        bounds=(-1.5, 1.5),
+        method="bounded",
+        options={"xatol": 1e-7},
+    )
+    return transformed(float(solved.x))
+
+
+def fit_lineup_uncertainty_scale(
+    matrices: list[np.ndarray],
+    disruptions: list[float] | np.ndarray,
+    actual_margins: list[int] | np.ndarray,
+    bound: float = 0.12,
+) -> float:
+    """
+    Fit a single OOS disruption-to-margin-dispersion scale.
+
+    This is intentionally non-directional: confirmed XI information can only
+    alter uncertainty, not which side is expected to be stronger.
+    """
+    d = np.asarray(disruptions, dtype=float)
+    margins = np.asarray(actual_margins, dtype=int)
+    if len(matrices) != len(d) or len(d) != len(margins):
+        raise ValueError("Inputs must align.")
+    if len(d) < 50:
+        raise ValueError("At least 50 OOS rows are required.")
+
+    def objective(gamma: float) -> float:
+        losses = []
+        for matrix, disruption, actual in zip(matrices, d, margins):
+            shaped = reshape_score_matrix_by_margin_uncertainty(
+                matrix,
+                float(disruption),
+                float(gamma),
+            )
+            p = margin_probability(shaped, int(actual))
+            losses.append(-np.log(max(p, 1e-12)))
+        return float(np.mean(losses))
+
+    result = minimize_scalar(
+        objective,
+        bounds=(-float(bound), float(bound)),
+        method="bounded",
+        options={"xatol": 1e-5},
+    )
+    return float(result.x)
