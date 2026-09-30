@@ -4,6 +4,7 @@ from gah.calibration import (
     calibration_bias,
     expected_calibration_error,
     expected_settlement_value,
+    fit_brier_blend_weight,
     multiclass_brier,
     observed_settlement_value,
     use_model_by_paired_loss,
@@ -81,3 +82,17 @@ def test_reliability_gate_keeps_model_when_it_is_better():
         min_history=100,
         z_threshold=1.0,
     )
+
+
+def test_brier_blend_prefers_perfect_model():
+    model = np.array([[1.0, 0.0], [0.0, 1.0]])
+    baseline = np.array([[0.5, 0.5], [0.5, 0.5]])
+    observed = model.copy()
+    assert fit_brier_blend_weight(model, baseline, observed) > 0.99
+
+
+def test_brier_blend_prefers_perfect_baseline():
+    model = np.array([[0.5, 0.5], [0.5, 0.5]])
+    baseline = np.array([[1.0, 0.0], [0.0, 1.0]])
+    observed = baseline.copy()
+    assert fit_brier_blend_weight(model, baseline, observed) < 0.01
