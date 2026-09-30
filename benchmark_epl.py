@@ -9,6 +9,7 @@ from gah.backtest import walk_forward_backtest, summarize_backtest
 from gah.data import load_openfootball_epl_seasons
 
 
+# Benchmark window intentionally fixed for the first reproducible baseline.
 DEFAULT_SEASONS = ["2021-22", "2022-23", "2023-24", "2024-25", "2025-26"]
 
 
