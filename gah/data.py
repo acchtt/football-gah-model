@@ -12,9 +12,27 @@ OPENFOOTBALL_RAW_BASE = (
     "https://raw.githubusercontent.com/openfootball/football.json/master"
 )
 
+LEAGUE_FILES = {
+    "EPL": "en.1.json",
+    "BUNDESLIGA": "de.1.json",
+    "LA_LIGA": "es.1.json",
+    "SERIE_A": "it.1.json",
+    "LIGUE_1": "fr.1.json",
+}
+
+
+def openfootball_league_url(season: str, competition: str) -> str:
+    key = competition.upper()
+    if key not in LEAGUE_FILES:
+        raise ValueError(
+            f"Unsupported competition {competition!r}. "
+            f"Supported: {sorted(LEAGUE_FILES)}"
+        )
+    return f"{OPENFOOTBALL_RAW_BASE}/{season}/{LEAGUE_FILES[key]}"
+
 
 def openfootball_epl_url(season: str) -> str:
-    return f"{OPENFOOTBALL_RAW_BASE}/{season}/en.1.json"
+    return openfootball_league_url(season, "EPL")
 
 
 def _read_json_source(source: str) -> dict:
@@ -29,7 +47,11 @@ def _read_json_source(source: str) -> dict:
     return json.loads(Path(source).read_text(encoding="utf-8"))
 
 
-def parse_openfootball_json(payload: dict, season: str, competition: str = "EPL") -> pd.DataFrame:
+def parse_openfootball_json(
+    payload: dict,
+    season: str,
+    competition: str = "EPL",
+) -> pd.DataFrame:
     rows: list[dict] = []
 
     for match in payload.get("matches", []):
@@ -63,16 +85,42 @@ def parse_openfootball_json(payload: dict, season: str, competition: str = "EPL"
         )
 
     if not rows:
-        raise ValueError(f"No completed matches found for {season}")
+        raise ValueError(f"No completed matches found for {competition} {season}")
 
     return pd.DataFrame(rows).sort_values("match_date").reset_index(drop=True)
 
 
+def load_openfootball_league_season(
+    season: str,
+    competition: str,
+) -> pd.DataFrame:
+    key = competition.upper()
+    payload = _read_json_source(openfootball_league_url(season, key))
+    return parse_openfootball_json(
+        payload,
+        season=season,
+        competition=key,
+    )
+
+
+def load_openfootball_league_seasons(
+    seasons: Iterable[str],
+    competition: str,
+) -> pd.DataFrame:
+    frames = [
+        load_openfootball_league_season(season, competition)
+        for season in seasons
+    ]
+    return (
+        pd.concat(frames, ignore_index=True)
+        .sort_values("match_date")
+        .reset_index(drop=True)
+    )
+
+
 def load_openfootball_epl_season(season: str) -> pd.DataFrame:
-    payload = _read_json_source(openfootball_epl_url(season))
-    return parse_openfootball_json(payload, season=season, competition="EPL")
+    return load_openfootball_league_season(season, "EPL")
 
 
 def load_openfootball_epl_seasons(seasons: Iterable[str]) -> pd.DataFrame:
-    frames = [load_openfootball_epl_season(season) for season in seasons]
-    return pd.concat(frames, ignore_index=True).sort_values("match_date").reset_index(drop=True)
+    return load_openfootball_league_seasons(seasons, "EPL")

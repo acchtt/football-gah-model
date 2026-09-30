@@ -1,4 +1,4 @@
-# Football GAH v1.3
+# Football GAH v1.4
 
 A code-first baseline for forecasting:
 
@@ -144,11 +144,21 @@ Market calibration and ROI/CLV evaluation should be layered on after a bookmaker
 - Median total MAE preserved at 1.2987
 - Production prediction CLI uses the promoted blend + tilt for totals
 
-### GAH v1.4
-- Competition-specific validation beyond EPL
+### GAH v1.4 — promoted validation release
+- Production prediction logic remains v1.3
+- Added OpenFootball ingestion for EPL, Bundesliga, La Liga, Serie A, and Ligue 1
+- 6,951 additional cross-competition OOS predictions
+- Asian handicap beat naive on all 17 tested lines in all five leagues
+- Totals validated strongly in EPL and La Liga, broadly in Bundesliga
+- Serie A totals remain line-dependent
+- Ligue 1 totals failed the naive comparator and remain experimental
+- Brier-optimal totals safety blend tested and rejected
+
+### GAH v1.5
+- Improve cross-competition totals robustness, especially Ligue 1
+- Test hierarchical / competition-aware totals calibration
 - Persist calibration artifacts so live prediction does not replay full history
-- Reliability plots by competition and line band
-- Decide whether calibration parameters should be global or competition-specific
+- Reliability diagnostics by competition and line band
 
 ### GAH v2
 - xG
