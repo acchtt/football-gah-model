@@ -8,6 +8,7 @@ from scipy.stats import poisson
 
 from .model import DixonColesModel
 from .markets import price_total, price_handicap
+from .totals import absolute_error_optimal_point, matrix_to_total_pmf
 
 
 def _independent_poisson_matrix(home_rate: float, away_rate: float, max_goals: int = 10) -> np.ndarray:
@@ -183,6 +184,9 @@ def walk_forward_backtest(
             blend_weight * pred["xg_total"]
             + (1.0 - blend_weight) * naive_xg_total
         )
+        blended_total_point = absolute_error_optimal_point(
+            matrix_to_total_pmf(total_matrix)
+        )
 
         row = {
             "match_date": target["match_date"],
@@ -211,6 +215,8 @@ def walk_forward_backtest(
             "total_blend_weight": blend_weight,
             "blended_xg_total": blended_xg_total,
             "blended_total_abs_error": abs(blended_xg_total - actual_total),
+            "blended_total_point": blended_total_point,
+            "blended_total_point_abs_error": abs(blended_total_point - actual_total),
             "blended_total_nll": blended_total_nll,
             f"over_{total_line}_prob": over["full_win"],
             f"naive_over_{total_line}_prob": naive_over["full_win"],
@@ -264,6 +270,7 @@ def summarize_backtest(results: pd.DataFrame) -> dict:
         summary.update(
             {
                 "mean_blended_total_abs_error": float(results["blended_total_abs_error"].mean()),
+                "mean_blended_total_point_abs_error": float(results["blended_total_point_abs_error"].mean()),
                 "mean_blended_total_nll": float(results["blended_total_nll"].mean()),
                 "mean_blended_over_25_brier": float(results["blended_over_2.5_brier"].mean()),
                 "mean_total_blend_weight": float(results["total_blend_weight"].mean()),
@@ -271,3 +278,39 @@ def summarize_backtest(results: pd.DataFrame) -> dict:
         )
 
     return summary
+
+
+def fit_next_total_blend_weight(
+    df: pd.DataFrame,
+    half_life_days: float = 180.0,
+    min_train_matches: int = 380,
+    refit_every: int = 20,
+    min_history: int = 100,
+    window: int = 380,
+) -> float:
+    """
+    Fit the totals blend weight for the NEXT match using only completed history.
+
+    Historical component likelihoods come from walk-forward predictions, so the
+    calibration itself never evaluates a match with information from its future.
+    """
+    if len(df) <= min_train_matches:
+        return 1.0
+
+    results = walk_forward_backtest(
+        df,
+        half_life_days=half_life_days,
+        min_train_matches=min_train_matches,
+        refit_every=refit_every,
+        total_blend=False,
+    )
+    if len(results) < min_history:
+        return 1.0
+
+    model_probs = np.exp(-results["total_nll"].to_numpy(dtype=float))
+    naive_probs = np.exp(-results["naive_total_nll"].to_numpy(dtype=float))
+    start = max(0, len(results) - window)
+    return _fit_total_blend_weight(
+        model_probs[start:].tolist(),
+        naive_probs[start:].tolist(),
+    )
