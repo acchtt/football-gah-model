@@ -1,0 +1,34 @@
+name: GAH v2.0 fresh reliability validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "benchmark_v20_reliability_fresh.py"
+      - ".github/workflows/v20-reliability-fresh.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v20-reliability-fresh-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+      - name: Run fresh reliability validation
+        run: python benchmark_v20_reliability_fresh.py
