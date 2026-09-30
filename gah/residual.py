@@ -248,3 +248,58 @@ class ConditionalTotalTiltModel:
         xs = (row - self.mean_) / self.scale_
         beta = float(xs @ self.coef_)
         return float(np.clip(beta, -self.beta_clip, self.beta_clip))
+
+
+def fit_residual_scale(
+    raw_betas: list[float] | np.ndarray,
+    base_pmfs: list[np.ndarray],
+    actual_totals: list[int] | np.ndarray,
+    grid_size: int = 21,
+) -> float:
+    """
+    Leakage-safe scalar shrinkage for historical OOS residual betas.
+
+    scale=0 disables the residual layer; scale=1 trusts the raw conditional
+    model fully. The scale is selected by exact-total log likelihood.
+    """
+    betas = np.asarray(raw_betas, dtype=float)
+    y = np.asarray(actual_totals, dtype=int)
+    if len(betas) == 0:
+        return 0.0
+    if len(betas) != len(base_pmfs) or len(betas) != len(y):
+        raise ValueError("raw_betas, base_pmfs, and actual_totals must align.")
+
+    max_len = max(len(p) for p in base_pmfs)
+    base = np.zeros((len(base_pmfs), max_len), dtype=float)
+    for i, pmf in enumerate(base_pmfs):
+        arr = np.asarray(pmf, dtype=float)
+        base[i, : len(arr)] = arr
+
+    goals = np.arange(max_len, dtype=float)
+    base_actual = np.array(
+        [
+            base[i, yi] if 0 <= yi < max_len else 1e-12
+            for i, yi in enumerate(y)
+        ],
+        dtype=float,
+    )
+
+    best_scale = 0.0
+    best_nll = np.inf
+    for scale in np.linspace(0.0, 1.0, int(grid_size)):
+        beta = scale * betas
+        z = np.sum(
+            base * np.exp(beta[:, None] * goals[None, :]),
+            axis=1,
+        )
+        p_actual = (
+            np.clip(base_actual, 1e-12, 1.0)
+            * np.exp(beta * y)
+            / np.clip(z, 1e-12, None)
+        )
+        nll = float(-np.log(np.clip(p_actual, 1e-12, 1.0)).mean())
+        if nll < best_nll:
+            best_nll = nll
+            best_scale = float(scale)
+
+    return best_scale
