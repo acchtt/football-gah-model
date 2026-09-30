@@ -3,6 +3,7 @@ import pandas as pd
 
 from gah.totals import (
     fit_total_tilt_beta,
+    fit_total_tilt_beta_brier,
     tilt_score_matrix_by_total,
     absolute_error_optimal_point,
     matrix_to_total_pmf,
@@ -118,3 +119,18 @@ def test_unweighted_home_away_rates_match_plain_means():
     )
     assert home == 2.0
     assert away == 1.0
+
+
+def test_brier_tilt_moves_up_when_realized_totals_are_high():
+    pmfs = [
+        np.array([0.55, 0.30, 0.10, 0.05]),
+        np.array([0.55, 0.30, 0.10, 0.05]),
+        np.array([0.55, 0.30, 0.10, 0.05]),
+        np.array([0.55, 0.30, 0.10, 0.05]),
+    ]
+    beta = fit_total_tilt_beta_brier(
+        pmfs,
+        [2, 3, 3, 3],
+        lines=(1.5, 2.0, 2.5),
+    )
+    assert beta > 0.0
