@@ -4,8 +4,13 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "gah/**"
-      - "tests/**"
+      - "gah/model.py"
+      - "gah/backtest.py"
+      - "gah/data.py"
+      - "gah/totals.py"
+      - "tests/test_data.py"
+      - "tests/test_totals.py"
+      - "tests/test_predict_markets.py"
       - "benchmark_epl_v12.py"
       - "predict.py"
       - ".github/workflows/epl-v12-totals.yml"
