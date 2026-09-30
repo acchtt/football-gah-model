@@ -1,4 +1,7 @@
-from gah.data import parse_openfootball_json
+from gah.data import (
+    openfootball_league_url,
+    parse_openfootball_json,
+)
 
 
 def test_parse_openfootball_completed_matches_only():
@@ -43,3 +46,11 @@ def test_parse_openfootball_direct_score_list():
     assert len(df) == 1
     assert df.iloc[0]["home_goals"] == 3
     assert df.iloc[0]["away_goals"] == 2
+
+
+def test_major_league_url_mapping():
+    assert openfootball_league_url("2025-26", "EPL").endswith("/2025-26/en.1.json")
+    assert openfootball_league_url("2025-26", "BUNDESLIGA").endswith("/2025-26/de.1.json")
+    assert openfootball_league_url("2025-26", "LA_LIGA").endswith("/2025-26/es.1.json")
+    assert openfootball_league_url("2025-26", "SERIE_A").endswith("/2025-26/it.1.json")
+    assert openfootball_league_url("2025-26", "LIGUE_1").endswith("/2025-26/fr.1.json")
