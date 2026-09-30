@@ -4,16 +4,20 @@ on:
   push:
     branches: [main]
     paths:
-      - "gah/**"
-      - "tests/**"
+      - "gah/model.py"
+      - "gah/backtest.py"
+      - "gah/data.py"
+      - "tests/test_data.py"
       - "benchmark_epl.py"
       - "requirements.txt"
       - ".github/workflows/epl-baseline.yml"
   pull_request:
     branches: [main]
     paths:
-      - "gah/**"
-      - "tests/**"
+      - "gah/model.py"
+      - "gah/backtest.py"
+      - "gah/data.py"
+      - "tests/test_data.py"
       - "benchmark_epl.py"
       - "requirements.txt"
       - ".github/workflows/epl-baseline.yml"
