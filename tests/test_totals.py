@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from gah.totals import (
+    absolute_error_optimal_point,
     matrix_to_total_pmf,
     negative_binomial_total_pmf,
     poisson_total_pmf,
@@ -47,3 +48,8 @@ def test_recency_weighting_favors_recent_scoring_regime():
     )
     assert mean > 4.0
     assert variance >= 0.0
+
+
+def test_absolute_error_optimal_point_is_predictive_median():
+    pmf = np.array([0.10, 0.20, 0.25, 0.30, 0.15])
+    assert absolute_error_optimal_point(pmf) == 2.0
