@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pandas as pd
 
 from benchmark_v20_selection import (
@@ -15,16 +17,21 @@ COMPETITIONS = ["EPL", "BUNDESLIGA", "LA_LIGA", "SERIE_A", "LIGUE_1"]
 THRESHOLDS = [0.00, 0.02, 0.04, 0.06, 0.10]
 
 
+def _load_competition_candidates(competition: str) -> pd.DataFrame:
+    data = load_football_data_seasons(DEFAULT_SEASONS, competition)
+    rows = build_candidates(data)
+    rows["competition"] = competition
+    rows["global_match_key"] = (
+        competition + "|" + rows["match_key"].astype(str)
+    )
+    return rows
+
+
 def load_all_candidates() -> pd.DataFrame:
-    frames = []
-    for competition in COMPETITIONS:
-        data = load_football_data_seasons(DEFAULT_SEASONS, competition)
-        rows = build_candidates(data)
-        rows["competition"] = competition
-        rows["global_match_key"] = (
-            competition + "|" + rows["match_key"].astype(str)
-        )
-        frames.append(rows)
+    # Each competition is independent. Parallelizing here preserves the
+    # experiment exactly while avoiding a five-league serial bottleneck.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        frames = list(pool.map(_load_competition_candidates, COMPETITIONS))
     return pd.concat(frames, ignore_index=True)
 
 
