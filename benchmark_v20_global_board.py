@@ -10,6 +10,7 @@ from benchmark_v20_selection import (
     build_candidates,
 )
 from gah.market_data import load_football_data_seasons
+from gah.reliability import MarketResidualReliability
 from gah.selection import SelectionCandidate, select_board
 
 
@@ -80,6 +81,77 @@ def select_global_daily_board(
     return rows.loc[selected_indices].copy()
 
 
+
+def add_rolling_reliability(rows: pd.DataFrame) -> pd.DataFrame:
+    """
+    Score each date using a reliability model fitted only on earlier dates.
+    """
+    rows = rows.sort_values(["match_date", "global_match_key", "market"]).copy()
+    rows["reliability_probability"] = float("nan")
+    rows["reliability_edge"] = float("nan")
+    rows["reliability_ev"] = float("nan")
+
+    history: list[dict] = []
+    model = None
+    last_fit_n = 0
+
+    for _, day in rows.groupby(rows["match_date"].dt.date, sort=True):
+        if len(history) >= 500 and (
+            model is None or len(history) - last_fit_n >= 250
+        ):
+            model = MarketResidualReliability(l2=10.0).fit(history)
+            last_fit_n = len(history)
+
+        if model is not None:
+            for idx, r in day.iterrows():
+                p = model.predict_probability(
+                    market=str(r["market"]),
+                    line=float(r["line"]),
+                    pure_probability=float(r["pure_probability"]),
+                    market_probability=float(r["market_probability"]),
+                )
+                rows.at[idx, "reliability_probability"] = p
+                rows.at[idx, "reliability_edge"] = (
+                    p - float(r["market_probability"])
+                )
+                rows.at[idx, "reliability_ev"] = (
+                    p * float(r["decimal_odds"]) - 1.0
+                )
+
+        history.extend(day.to_dict("records"))
+
+    return rows
+
+
+def select_reliability_board(
+    rows: pd.DataFrame,
+    max_matches: int = 8,
+) -> pd.DataFrame:
+    selected_indices: list[int] = []
+
+    scored = rows[
+        rows["reliability_ev"].notna()
+        & (rows["reliability_ev"] > 0.0)
+        & (rows["reliability_edge"] > 0.0)
+    ]
+
+    for _, day in scored.groupby(scored["match_date"].dt.date, sort=True):
+        day = day.sort_values(
+            ["reliability_ev", "reliability_edge"],
+            ascending=False,
+        )
+        used_matches: set[str] = set()
+        for idx, r in day.iterrows():
+            key = str(r["global_match_key"])
+            if key in used_matches:
+                continue
+            selected_indices.append(idx)
+            used_matches.add(key)
+            if len(used_matches) >= max_matches:
+                break
+
+    return rows.loc[selected_indices].copy()
+
 def summarize(rows: pd.DataFrame) -> dict:
     clv = rows["clv_probability"].dropna()
     return {
@@ -130,6 +202,33 @@ def main() -> None:
                 f"{s['mean_ev']:+.3f} | {s['mean_clv']:+.4f} | "
                 f"{s['positive_clv_rate']:.3f} |"
             )
+
+    print()
+    print("## Rolling OOS reliability board")
+    print()
+    reliable = add_rolling_reliability(rows)
+    print(
+        "Market probability is the baseline. The residual model is refit only "
+        "on earlier dates using edge, pure confidence, market type and AH line magnitude."
+    )
+    print("Only positive predicted-EV candidates may enter; max 8 matches per date.")
+    print()
+    print("| Phase | Bets | ROI | Mean reliability edge | Mean predicted EV | Mean probability CLV | Positive CLV rate |")
+    print("|---|---:|---:|---:|---:|---:|---:|")
+    for phase in ["development", "holdout"]:
+        board = select_reliability_board(
+            reliable[reliable["phase"] == phase],
+            max_matches=8,
+        )
+        if board.empty:
+            continue
+        s = summarize(board)
+        print(
+            f"| {phase} | {s['bets']} | {s['roi']:+.3f} | "
+            f"{board['reliability_edge'].mean():+.4f} | "
+            f"{board['reliability_ev'].mean():+.3f} | "
+            f"{s['mean_clv']:+.4f} | {s['positive_clv_rate']:.3f} |"
+        )
 
     print()
     print("## Holdout composition at 10pp+")
