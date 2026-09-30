@@ -3,6 +3,7 @@ import numpy as np
 from gah.calibration import (
     calibration_bias,
     expected_calibration_error,
+    fit_brier_blend_weight,
     expected_settlement_value,
     multiclass_brier,
     observed_settlement_value,
@@ -50,3 +51,17 @@ def test_calibration_metrics_are_zero_when_perfect():
     observed = [0.1, 0.3, 0.6, 0.9]
     assert expected_calibration_error(predicted, observed, n_bins=5) < 1e-12
     assert abs(calibration_bias(predicted, observed)) < 1e-12
+
+
+def test_brier_blend_prefers_perfect_model():
+    model = np.array([[1.0, 0.0], [0.0, 1.0]])
+    baseline = np.array([[0.5, 0.5], [0.5, 0.5]])
+    observed = model.copy()
+    assert fit_brier_blend_weight(model, baseline, observed) > 0.99
+
+
+def test_brier_blend_falls_back_to_perfect_baseline():
+    model = np.array([[0.5, 0.5], [0.5, 0.5]])
+    baseline = np.array([[1.0, 0.0], [0.0, 1.0]])
+    observed = baseline.copy()
+    assert fit_brier_blend_weight(model, baseline, observed) < 0.01
