@@ -102,3 +102,35 @@ def calibration_bias(
     if len(p) == 0:
         return 0.0
     return float(p.mean() - y.mean())
+
+
+def fit_brier_blend_weight(
+    model_vectors: list[np.ndarray] | np.ndarray,
+    baseline_vectors: list[np.ndarray] | np.ndarray,
+    observed_vectors: list[np.ndarray] | np.ndarray,
+) -> float:
+    """
+    Closed-form mixture weight minimizing historical Brier score.
+
+    The inputs may contain any number of observations/markets as long as the
+    last dimension contains outcome probabilities. The optimum is clipped to
+    [0, 1], so 1.0 means trust the model fully and 0.0 means fall back to the
+    baseline fully.
+    """
+    model = np.asarray(model_vectors, dtype=float)
+    baseline = np.asarray(baseline_vectors, dtype=float)
+    observed = np.asarray(observed_vectors, dtype=float)
+
+    if model.shape != baseline.shape or model.shape != observed.shape:
+        raise ValueError("model, baseline, and observed arrays must have equal shape.")
+    if model.size == 0:
+        return 1.0
+
+    delta = model - baseline
+    residual = baseline - observed
+    denom = float(np.square(delta).sum())
+    if denom <= 1e-15:
+        return 1.0
+
+    alpha = -float((residual * delta).sum()) / denom
+    return float(np.clip(alpha, 0.0, 1.0))
