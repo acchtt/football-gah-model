@@ -61,6 +61,16 @@ def pmf_mean(pmf: np.ndarray) -> float:
     return float(np.dot(goals, pmf))
 
 
+def absolute_error_optimal_point(pmf: np.ndarray) -> float:
+    """
+    Bayes-optimal point forecast under absolute-error loss.
+
+    For a discrete count distribution this is a predictive median, not the mean.
+    """
+    cdf = np.cumsum(pmf)
+    return float(np.searchsorted(cdf, 0.5, side="left"))
+
+
 def over_probability(pmf: np.ndarray, line: float) -> float:
     """
     Full-win probability for non-quarter binary checks such as Over 2.5.
