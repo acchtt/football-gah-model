@@ -6,6 +6,7 @@ from gah.calibration import (
     expected_settlement_value,
     multiclass_brier,
     observed_settlement_value,
+    use_model_by_paired_loss,
 )
 from gah.markets import (
     price_handicap,
@@ -50,3 +51,33 @@ def test_calibration_metrics_are_zero_when_perfect():
     observed = [0.1, 0.3, 0.6, 0.9]
     assert expected_calibration_error(predicted, observed, n_bins=5) < 1e-12
     assert abs(calibration_bias(predicted, observed)) < 1e-12
+
+
+def test_reliability_gate_keeps_model_before_minimum_history():
+    assert use_model_by_paired_loss(
+        [0.6] * 20,
+        [0.5] * 20,
+        min_history=100,
+    )
+
+
+def test_reliability_gate_falls_back_when_model_is_reliably_worse():
+    model = np.linspace(0.54, 0.56, 200)
+    baseline = np.linspace(0.50, 0.52, 200)
+    assert not use_model_by_paired_loss(
+        model,
+        baseline,
+        min_history=100,
+        z_threshold=1.0,
+    )
+
+
+def test_reliability_gate_keeps_model_when_it_is_better():
+    model = np.linspace(0.48, 0.50, 200)
+    baseline = np.linspace(0.52, 0.54, 200)
+    assert use_model_by_paired_loss(
+        model,
+        baseline,
+        min_history=100,
+        z_threshold=1.0,
+    )
