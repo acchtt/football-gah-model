@@ -47,12 +47,30 @@ def run_benchmark(
 
     line_rows: list[dict] = []
     match_rows: list[dict] = []
+    diagnostics = {
+        "matches": len(data),
+        "lineup_fetch_errors": 0,
+        "complete_lineup_files": 0,
+        "post_warmup_complete": 0,
+        "finite_coverage": 0,
+    }
+    first_errors: list[str] = []
 
     for i, target in data.iterrows():
         try:
             xis = load_statsbomb_starting_xi(int(target["match_id"]))
-        except Exception:
+        except Exception as exc:
+            diagnostics["lineup_fetch_errors"] += 1
+            if len(first_errors) < 3:
+                first_errors.append(
+                    f'{int(target["match_id"])}: {type(exc).__name__}: {exc}'
+                )
             xis = {}
+
+        if len(xis) == 2:
+            diagnostics["complete_lineup_files"] += 1
+            if i >= min_train:
+                diagnostics["post_warmup_complete"] += 1
 
         home_xi = xis.get(int(target["home_team_id"]))
         away_xi = xis.get(int(target["away_team_id"]))
@@ -67,6 +85,7 @@ def run_benchmark(
             away_coverage = float("nan")
 
         if i >= min_train and np.isfinite(home_coverage) and np.isfinite(away_coverage):
+            diagnostics["finite_coverage"] += 1
             train = data.iloc[:i]
 
             needs_refit = (
@@ -150,6 +169,12 @@ def run_benchmark(
             state.update(int(target["home_team_id"]), home_xi)
         if away_xi is not None:
             state.update(int(target["away_team_id"]), away_xi)
+
+    print("XI_DIAGNOSTICS", diagnostics)
+    if first_errors:
+        print("XI_FIRST_ERRORS")
+        for error in first_errors:
+            print(error)
 
     return pd.DataFrame(line_rows), pd.DataFrame(match_rows)
 
