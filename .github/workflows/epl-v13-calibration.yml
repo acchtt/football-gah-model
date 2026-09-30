@@ -4,8 +4,15 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "gah/**"
-      - "tests/**"
+      - "gah/model.py"
+      - "gah/backtest.py"
+      - "gah/data.py"
+      - "gah/totals.py"
+      - "gah/markets.py"
+      - "gah/calibration.py"
+      - "tests/test_data.py"
+      - "tests/test_totals.py"
+      - "tests/test_calibration.py"
       - "benchmark_epl_v13.py"
       - "benchmark_epl_v13_tilt.py"
       - ".github/workflows/epl-v13-calibration.yml"
