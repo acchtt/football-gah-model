@@ -7,6 +7,7 @@ on:
       - "gah/**"
       - "tests/**"
       - "benchmark_epl_v13.py"
+      - "benchmark_epl_v13_tilt.py"
       - ".github/workflows/epl-v13-calibration.yml"
   workflow_dispatch:
 
@@ -33,3 +34,6 @@ jobs:
 
       - name: Run full Asian-line calibration benchmark
         run: python benchmark_epl_v13.py
+
+      - name: Run totals probability-tilt experiment
+        run: python benchmark_epl_v13_tilt.py
