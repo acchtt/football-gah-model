@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - "gah/reliability.py"
+      - "tests/test_reliability.py"
+      - "benchmark_v20_global_board.py"
       - "benchmark_v20_reliability_fresh.py"
       - ".github/workflows/v20-reliability-fresh.yml"
   workflow_dispatch:
