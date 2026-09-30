@@ -1,0 +1,48 @@
+name: GAH v1.8 confirmed-XI screen
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/lineups.py"
+      - "tests/test_lineups.py"
+      - "benchmark_v18_lineups.py"
+      - ".github/workflows/v18-lineups.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - label: BUNDESLIGA_2023_24
+            competition_id: 9
+            season_id: 281
+          - label: LIGUE_1_2022_23
+            competition_id: 7
+            season_id: 235
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+      - name: Run confirmed-XI screen
+        run: >
+          python benchmark_v18_lineups.py
+          --competition-id "${{ matrix.competition_id }}"
+          --season-id "${{ matrix.season_id }}"
+          --label "${{ matrix.label }}"
