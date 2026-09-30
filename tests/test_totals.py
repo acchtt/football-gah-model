@@ -9,6 +9,7 @@ from gah.totals import (
     negative_binomial_total_pmf,
     poisson_total_pmf,
     recency_weighted_total_stats,
+    recency_weighted_home_away_rates,
 )
 
 
@@ -75,3 +76,45 @@ def test_tilt_fit_is_positive_when_outcomes_run_high():
     ]
     beta = fit_total_tilt_beta(pmfs, [2, 2, 3, 3])
     assert beta > 0.0
+
+
+def test_recency_weighted_home_away_rates_follow_recent_matches():
+    df = pd.DataFrame(
+        {
+            "match_date": pd.to_datetime(
+                ["2025-01-01", "2025-01-02", "2025-12-30", "2025-12-31"],
+                utc=True,
+            ),
+            "home_goals": [0, 0, 3, 4],
+            "away_goals": [0, 0, 2, 2],
+        }
+    )
+    home, away = recency_weighted_home_away_rates(
+        df,
+        as_of=pd.Timestamp("2026-01-01", tz="UTC"),
+        half_life_days=30,
+        recent_matches=None,
+    )
+    assert home > 3.0
+    assert away > 1.5
+
+
+def test_unweighted_home_away_rates_match_plain_means():
+    df = pd.DataFrame(
+        {
+            "match_date": pd.to_datetime(
+                ["2025-01-01", "2025-01-02"],
+                utc=True,
+            ),
+            "home_goals": [1, 3],
+            "away_goals": [0, 2],
+        }
+    )
+    home, away = recency_weighted_home_away_rates(
+        df,
+        as_of=pd.Timestamp("2025-01-03", tz="UTC"),
+        half_life_days=None,
+        recent_matches=None,
+    )
+    assert home == 2.0
+    assert away == 1.0
