@@ -33,8 +33,14 @@ def parse_openfootball_json(payload: dict, season: str, competition: str = "EPL"
     rows: list[dict] = []
 
     for match in payload.get("matches", []):
-        score = match.get("score") or {}
-        ft = score.get("ft")
+        score = match.get("score")
+        if isinstance(score, list):
+            ft = score
+        elif isinstance(score, dict):
+            ft = score.get("ft")
+        else:
+            ft = None
+
         if not isinstance(ft, list) or len(ft) != 2:
             continue
         if ft[0] is None or ft[1] is None:
