@@ -1,22 +1,6 @@
 name: EPL baseline benchmark
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "gah/**"
-      - "tests/**"
-      - "benchmark_epl.py"
-      - "requirements.txt"
-      - ".github/workflows/epl-baseline.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "gah/**"
-      - "tests/**"
-      - "benchmark_epl.py"
-      - "requirements.txt"
-      - ".github/workflows/epl-baseline.yml"
   workflow_dispatch:
 
 permissions:
