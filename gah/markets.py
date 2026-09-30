@@ -155,3 +155,46 @@ def standard_market_table(matrix: np.ndarray) -> list[dict]:
         rows.append(price_handicap(matrix, line, "home"))
         rows.append(price_handicap(matrix, -line, "away"))
     return rows
+
+
+SETTLEMENT_CATEGORIES = ("full_win", "half_win", "push", "half_loss", "full_loss")
+
+
+def settle_handicap(actual_margin: int | float, line: float, side: str = "home") -> str:
+    """Return the realized Asian-handicap settlement category for one side."""
+    side = side.lower()
+    if side not in {"home", "away"}:
+        raise ValueError("side must be 'home' or 'away'")
+    margin = float(actual_margin) if side == "home" else -float(actual_margin)
+    return _settlement_category(margin, float(line))
+
+
+def settle_total(actual_total: int | float, line: float, side: str = "over") -> str:
+    """Return the realized Asian-total settlement category for one side."""
+    side = side.lower()
+    if side not in {"over", "under"}:
+        raise ValueError("side must be 'over' or 'under'")
+
+    legs = _split_asian_line(float(line))
+    results = []
+    for leg in legs:
+        margin = (
+            float(actual_total) - leg
+            if side == "over"
+            else leg - float(actual_total)
+        )
+        results.append(_leg_result(margin))
+
+    if len(results) == 1:
+        return {"win": "full_win", "push": "push", "loss": "full_loss"}[results[0]]
+
+    pair = tuple(sorted(results))
+    mapping = {
+        ("win", "win"): "full_win",
+        ("push", "win"): "half_win",
+        ("loss", "win"): "push",
+        ("push", "push"): "push",
+        ("loss", "push"): "half_loss",
+        ("loss", "loss"): "full_loss",
+    }
+    return mapping[pair]

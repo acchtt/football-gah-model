@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 
 from gah.totals import (
+    fit_total_tilt_beta,
+    tilt_score_matrix_by_total,
     absolute_error_optimal_point,
     matrix_to_total_pmf,
     negative_binomial_total_pmf,
@@ -53,3 +55,23 @@ def test_recency_weighting_favors_recent_scoring_regime():
 def test_absolute_error_optimal_point_is_predictive_median():
     pmf = np.array([0.10, 0.20, 0.25, 0.30, 0.15])
     assert absolute_error_optimal_point(pmf) == 2.0
+
+
+def test_positive_tilt_moves_mass_to_higher_totals():
+    matrix = np.zeros((3, 3))
+    matrix[0, 0] = 0.5
+    matrix[2, 0] = 0.5
+    tilted = tilt_score_matrix_by_total(matrix, beta=0.2)
+    assert tilted[2, 0] > 0.5
+    assert abs(tilted.sum() - 1.0) < 1e-12
+
+
+def test_tilt_fit_is_positive_when_outcomes_run_high():
+    pmfs = [
+        np.array([0.5, 0.3, 0.15, 0.05]),
+        np.array([0.5, 0.3, 0.15, 0.05]),
+        np.array([0.5, 0.3, 0.15, 0.05]),
+        np.array([0.5, 0.3, 0.15, 0.05]),
+    ]
+    beta = fit_total_tilt_beta(pmfs, [2, 2, 3, 3])
+    assert beta > 0.0
