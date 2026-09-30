@@ -7,6 +7,7 @@ on:
       - "gah/lineups.py"
       - "tests/test_lineups.py"
       - "benchmark_v18_lineups.py"
+      - "benchmark_v18_uncertainty.py"
       - ".github/workflows/v18-lineups.yml"
   workflow_dispatch:
 
@@ -40,9 +41,9 @@ jobs:
         env:
           PYTHONPATH: .
         run: pytest -q
-      - name: Run confirmed-XI screen
+      - name: Run lineup-uncertainty screen
         run: >
-          python benchmark_v18_lineups.py
+          python benchmark_v18_uncertainty.py
           --competition-id "${{ matrix.competition_id }}"
           --season-id "${{ matrix.season_id }}"
           --label "${{ matrix.label }}"
