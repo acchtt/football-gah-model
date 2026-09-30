@@ -1,0 +1,45 @@
+name: GAH v1.6 tactical xG residual
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/xg.py"
+      - "gah/tactical.py"
+      - "tests/test_xg.py"
+      - "tests/test_tactical.py"
+      - "benchmark_v16_tactical.py"
+      - "requirements-xg.txt"
+      - ".github/workflows/v16-tactical.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        competition:
+          - EPL
+          - BUNDESLIGA
+          - LA_LIGA
+          - SERIE_A
+          - LIGUE_1
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install xG dependencies
+        run: pip install -r requirements-xg.txt pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+      - name: Run ${{ matrix.competition }} tactical benchmark
+        run: python benchmark_v16_tactical.py --competition "${{ matrix.competition }}"
