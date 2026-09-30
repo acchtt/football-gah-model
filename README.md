@@ -1,4 +1,4 @@
-# Football GAH v1
+# Football GAH v1.1
 
 A code-first baseline for forecasting:
 
@@ -119,8 +119,15 @@ Market calibration and ROI/CLV evaluation should be layered on after a bookmaker
 - Asian handicap pricing
 - Walk-forward backtest
 
-### GAH v1.1
-- Better calibration diagnostics
+### GAH v1.1 — promoted
+- Leakage-safe online totals blend
+- Pure Dixon-Coles retained for Asian handicap
+- Five-season EPL walk-forward validation
+- O2.5 Brier improved vs both v1 and naive baseline
+- Total-goal likelihood improved vs both v1 and naive baseline
+
+### GAH v1.2
+- Reduce remaining total-goals MAE gap
 - Probability reliability plots
 - Competition-specific home advantage
 - Tail/overdispersion testing
