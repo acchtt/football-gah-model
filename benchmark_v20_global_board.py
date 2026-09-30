@@ -93,14 +93,22 @@ def add_rolling_reliability(rows: pd.DataFrame) -> pd.DataFrame:
 
     history: list[dict] = []
     model = None
-    last_fit_n = 0
+    last_fit_active_n = 0
+
+    def active_count(items: list[dict]) -> int:
+        return sum(
+            1
+            for item in items
+            if str(item["actual_category"]) != "push"
+        )
 
     for _, day in rows.groupby(rows["match_date"].dt.date, sort=True):
-        if len(history) >= 500 and (
-            model is None or len(history) - last_fit_n >= 250
+        active_n = active_count(history)
+        if active_n >= 500 and (
+            model is None or active_n - last_fit_active_n >= 250
         ):
             model = MarketResidualReliability(l2=10.0).fit(history)
-            last_fit_n = len(history)
+            last_fit_active_n = active_n
 
         if model is not None:
             for idx, r in day.iterrows():
