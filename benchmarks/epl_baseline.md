@@ -36,11 +36,6 @@ Evaluated predictions: **1513**
 
 ## Interpretation
 
-The baseline is already materially stronger than a league-average model on goal margin / Home -0.5, while totals are not yet improved. That tells us the next development cycle should treat the two target markets separately:
-
-1. Preserve the Dixon-Coles team-strength core for handicap.
-2. Improve the total-goals component before adding betting selection.
-3. Add calibration diagnostics and tune time decay using nested/walk-forward validation rather than selecting parameters on the same evaluation set.
-4. Add richer scoring-volume features (xG/shots/tempo) only if they improve out-of-sample totals metrics.
-
 This report is a baseline, not a betting strategy. No bookmaker prices, xG, lineups, injuries, shots, or ML residual features are used yet.
+A feature should only be kept in later versions if it improves genuinely out-of-sample metrics under the same walk-forward discipline.
+
