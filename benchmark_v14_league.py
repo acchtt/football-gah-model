@@ -16,11 +16,13 @@ from gah.calibration import (
     calibration_bias,
     expected_calibration_error,
     expected_settlement_value,
+    fit_brier_blend_weight,
     multiclass_brier,
     observed_settlement_value,
 )
 from gah.data import load_openfootball_league_seasons
 from gah.markets import (
+    SETTLEMENT_CATEGORIES,
     price_handicap,
     price_total,
     settle_handicap,
@@ -48,6 +50,19 @@ def _nll(p: float) -> float:
     return -math.log(max(float(p), 1e-12))
 
 
+def _pricing_vector(pricing: dict) -> np.ndarray:
+    return np.array(
+        [float(pricing.get(category, 0.0)) for category in SETTLEMENT_CATEGORIES],
+        dtype=float,
+    )
+
+
+def _observed_vector(actual_category: str) -> np.ndarray:
+    out = np.zeros(len(SETTLEMENT_CATEGORIES), dtype=float)
+    out[SETTLEMENT_CATEGORIES.index(actual_category)] = 1.0
+    return out
+
+
 def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     data = data.copy()
     data["match_date"] = pd.to_datetime(data["match_date"], utc=True)
@@ -60,6 +75,11 @@ def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     hist_naive_prob: list[float] = []
     hist_base_pmfs: list[np.ndarray] = []
     hist_actual_totals: list[int] = []
+
+    # Historical full-line settlement distributions for the v1.4 safety blend.
+    hist_v13_vectors: list[np.ndarray] = []
+    hist_naive_vectors: list[np.ndarray] = []
+    hist_observed_vectors: list[np.ndarray] = []
 
     line_rows: list[dict] = []
     match_rows: list[dict] = []
@@ -118,7 +138,24 @@ def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
                 hist_actual_totals[start:],
             )
 
-        totals_matrix = tilt_score_matrix_by_total(base_totals_matrix, beta)
+        v13_totals_matrix = tilt_score_matrix_by_total(base_totals_matrix, beta)
+
+        safety_alpha = 1.0
+        if len(hist_v13_vectors) >= 100:
+            start = max(0, len(hist_v13_vectors) - 380)
+            safety_alpha = fit_brier_blend_weight(
+                np.stack(hist_v13_vectors[start:]),
+                np.stack(hist_naive_vectors[start:]),
+                np.stack(hist_observed_vectors[start:]),
+            )
+
+        totals_matrix = (
+            safety_alpha * v13_totals_matrix
+            + (1.0 - safety_alpha) * naive_matrix
+        )
+        totals_matrix = totals_matrix / totals_matrix.sum()
+
+        v13_pmf = matrix_to_total_pmf(v13_totals_matrix)
         total_pmf = matrix_to_total_pmf(totals_matrix)
 
         hg = int(target["home_goals"])
@@ -131,7 +168,12 @@ def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
                 "season": target["season"],
                 "blend_weight": blend_weight,
                 "beta": beta,
+                "safety_alpha": safety_alpha,
+                "v13_total_nll": _nll(pmf_probability(v13_pmf, actual_total)),
                 "total_nll": _nll(pmf_probability(total_pmf, actual_total)),
+                "v13_point_mae": abs(
+                    absolute_error_optimal_point(v13_pmf) - actual_total
+                ),
                 "point_mae": abs(
                     absolute_error_optimal_point(total_pmf) - actual_total
                 ),
@@ -139,15 +181,29 @@ def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             }
         )
 
+        current_v13_vectors: list[np.ndarray] = []
+        current_naive_vectors: list[np.ndarray] = []
+        current_observed_vectors: list[np.ndarray] = []
+
         for line in TOTAL_LINES:
+            v13_pricing = price_total(v13_totals_matrix, line, "over")
             pricing = price_total(totals_matrix, line, "over")
             naive_pricing = price_total(naive_matrix, line, "over")
             actual = settle_total(actual_total, line, "over")
+
+            v13_vec = _pricing_vector(v13_pricing)
+            naive_vec = _pricing_vector(naive_pricing)
+            observed_vec = _observed_vector(actual)
+            current_v13_vectors.append(v13_vec)
+            current_naive_vectors.append(naive_vec)
+            current_observed_vectors.append(observed_vec)
+
             line_rows.append(
                 {
                     "season": target["season"],
                     "market": "total",
                     "line": line,
+                    "v13_brier": multiclass_brier(v13_pricing, actual),
                     "model_brier": multiclass_brier(pricing, actual),
                     "naive_brier": multiclass_brier(naive_pricing, actual),
                     "predicted_value": expected_settlement_value(pricing),
@@ -160,12 +216,14 @@ def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             pricing = price_handicap(raw_matrix, line, "home")
             naive_pricing = price_handicap(naive_matrix, line, "home")
             actual = settle_handicap(actual_margin, line, "home")
+            brier = multiclass_brier(pricing, actual)
             line_rows.append(
                 {
                     "season": target["season"],
                     "market": "asian_handicap",
                     "line": line,
-                    "model_brier": multiclass_brier(pricing, actual),
+                    "v13_brier": brier,
+                    "model_brier": brier,
                     "naive_brier": multiclass_brier(naive_pricing, actual),
                     "predicted_value": expected_settlement_value(pricing),
                     "naive_predicted_value": expected_settlement_value(naive_pricing),
@@ -178,12 +236,18 @@ def run_benchmark(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         hist_base_pmfs.append(base_pmf)
         hist_actual_totals.append(actual_total)
 
+        # Update the safety optimizer only AFTER the current outcome is known.
+        hist_v13_vectors.append(np.stack(current_v13_vectors))
+        hist_naive_vectors.append(np.stack(current_naive_vectors))
+        hist_observed_vectors.append(np.stack(current_observed_vectors))
+
     return pd.DataFrame(line_rows), pd.DataFrame(match_rows)
 
 
 def summarize_lines(lines: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for (market, line), g in lines.groupby(["market", "line"], sort=True):
+        v13_brier = float(g["v13_brier"].mean())
         model_brier = float(g["model_brier"].mean())
         naive_brier = float(g["naive_brier"].mean())
         rows.append(
@@ -191,8 +255,13 @@ def summarize_lines(lines: pd.DataFrame) -> pd.DataFrame:
                 "market": market,
                 "line": float(line),
                 "n": int(len(g)),
+                "v13_brier": v13_brier,
                 "model_brier": model_brier,
                 "naive_brier": naive_brier,
+                "vs_v13_pct": (
+                    100.0 * (v13_brier - model_brier) / v13_brier
+                    if v13_brier > 0 else 0.0
+                ),
                 "improvement_pct": (
                     100.0 * (naive_brier - model_brier) / naive_brier
                     if naive_brier > 0 else 0.0
@@ -221,19 +290,24 @@ def build_report(
     totals = summary[summary["market"] == "total"]
     ah = summary[summary["market"] == "asian_handicap"]
 
+    total_v13 = float(totals["v13_brier"].mean())
     total_model = float(totals["model_brier"].mean())
     total_naive = float(totals["naive_brier"].mean())
     ah_model = float(ah["model_brier"].mean())
     ah_naive = float(ah["naive_brier"].mean())
 
     total_better = int((totals["model_brier"] < totals["naive_brier"]).sum())
+    total_vs_v13 = int((totals["model_brier"] < totals["v13_brier"]).sum())
     ah_better = int((ah["model_brier"] < ah["naive_brier"]).sum())
 
     seasons = ", ".join(sorted(data["season"].unique()))
     lines = [
         f"# GAH v1.4 Cross-Competition Validation — {competition}",
         "",
-        "Frozen GAH v1.3 architecture; no league-specific feature changes.",
+        "GAH v1.4 keeps Asian handicap unchanged and adds a leakage-safe totals",
+        "safety blend. The safety weight is the closed-form mixture that minimizes",
+        "historical out-of-sample multi-line settlement Brier between v1.3 totals",
+        "and the league-average baseline.",
         "",
         "## Protocol",
         "",
@@ -242,38 +316,43 @@ def build_report(
         f"- Completed matches loaded: {len(data)}",
         f"- Out-of-sample predictions: {len(match_results)}",
         "- Dixon-Coles refit every 20 evaluated matches or for a newly observed team",
-        "- Totals: OOS DC/league blend + OOS total-goal tilt",
+        "- Totals: v1.3 OOS blend + tilt, then OOS Brier-optimal safety blend",
         "- Asian handicap: pure Dixon-Coles",
         "- 11 totals lines and 17 AH lines",
-        "- Five-outcome Asian settlement Brier is the primary line metric",
         "",
         "## Aggregate",
         "",
-        "| Metric | GAH v1.3 | Naive | Improvement |",
-        "|---|---:|---:|---:|",
-        f"| Totals multi-line Brier ↓ | {total_model:.4f} | {total_naive:.4f} | "
+        "| Metric | v1.3 | v1.4 safety | Naive | v1.4 vs v1.3 | v1.4 vs naive |",
+        "|---|---:|---:|---:|---:|---:|",
+        f"| Totals multi-line Brier ↓ | {total_v13:.4f} | {total_model:.4f} | "
+        f"{total_naive:.4f} | {100.0*(total_v13-total_model)/total_v13:+.2f}% | "
         f"{100.0*(total_naive-total_model)/total_naive:+.2f}% |",
-        f"| AH multi-line Brier ↓ | {ah_model:.4f} | {ah_naive:.4f} | "
-        f"{100.0*(ah_naive-ah_model)/ah_naive:+.2f}% |",
         "",
+        f"AH multi-line Brier: **{ah_model:.4f}** vs naive **{ah_naive:.4f}** "
+        f"({100.0*(ah_naive-ah_model)/ah_naive:+.2f}%)",
         f"Totals lines beating naive: **{total_better}/{len(totals)}**",
+        f"Totals lines improved vs v1.3: **{total_vs_v13}/{len(totals)}**",
         f"AH lines beating naive: **{ah_better}/{len(ah)}**",
-        f"Exact-total NLL: **{match_results['total_nll'].mean():.4f}**",
-        f"Median total point MAE: **{match_results['point_mae'].mean():.4f}**",
+        f"v1.3 exact-total NLL: **{match_results['v13_total_nll'].mean():.4f}**",
+        f"v1.4 exact-total NLL: **{match_results['total_nll'].mean():.4f}**",
+        f"v1.3 median total MAE: **{match_results['v13_point_mae'].mean():.4f}**",
+        f"v1.4 median total MAE: **{match_results['point_mae'].mean():.4f}**",
         f"Goal-margin MAE: **{match_results['margin_mae'].mean():.4f}**",
-        f"Mean blend weight on Dixon-Coles: **{match_results['blend_weight'].mean():.3f}**",
+        f"Mean DC blend weight: **{match_results['blend_weight'].mean():.3f}**",
         f"Mean totals tilt beta: **{match_results['beta'].mean():+.4f}**",
+        f"Mean v1.4 safety alpha: **{match_results['safety_alpha'].mean():.3f}**",
         "",
         "## Totals by line",
         "",
-        "| Line | Model Brier | Naive Brier | Improvement | ECE | Bias |",
-        "|---:|---:|---:|---:|---:|---:|",
+        "| Line | v1.3 Brier | v1.4 Brier | Naive | v1.4 vs v1.3 | v1.4 vs naive | ECE | Bias |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
 
     for _, row in totals.sort_values("line").iterrows():
         lines.append(
-            f"| {row['line']:+.2f} | {row['model_brier']:.4f} | "
-            f"{row['naive_brier']:.4f} | {row['improvement_pct']:+.2f}% | "
+            f"| {row['line']:+.2f} | {row['v13_brier']:.4f} | "
+            f"{row['model_brier']:.4f} | {row['naive_brier']:.4f} | "
+            f"{row['vs_v13_pct']:+.2f}% | {row['improvement_pct']:+.2f}% | "
             f"{row['ece']:.4f} | {row['bias']:+.4f} |"
         )
 
