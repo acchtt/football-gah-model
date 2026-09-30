@@ -10,7 +10,7 @@ from gah.lineups import (
     LineupContinuityState,
     fit_lineup_margin_scale,
     load_statsbomb_matches,
-    load_statsbomb_starting_xi,
+    load_statsbomb_starting_xis,
     tilt_score_matrix_by_margin,
 )
 from gah.markets import price_handicap, settle_handicap
@@ -34,6 +34,10 @@ def run_benchmark(
     min_train: int = 80,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     data = load_statsbomb_matches(competition_id, season_id)
+    lineup_cache, lineup_fetch = load_statsbomb_starting_xis(
+        data["match_id"].tolist(),
+        max_workers=8,
+    )
     state = LineupContinuityState(window=10, min_history=5)
 
     model = None
@@ -49,28 +53,17 @@ def run_benchmark(
     match_rows: list[dict] = []
     diagnostics = {
         "matches": len(data),
-        "lineup_fetch_errors": 0,
-        "complete_lineup_files": 0,
+        "lineup_fetch_errors": int(lineup_fetch["fetch_errors"]),
+        "complete_lineup_files": int(lineup_fetch["complete_lineup_files"]),
         "post_warmup_complete": 0,
         "finite_coverage": 0,
     }
-    first_errors: list[str] = []
 
     for i, target in data.iterrows():
-        try:
-            xis = load_statsbomb_starting_xi(int(target["match_id"]))
-        except Exception as exc:
-            diagnostics["lineup_fetch_errors"] += 1
-            if len(first_errors) < 3:
-                first_errors.append(
-                    f'{int(target["match_id"])}: {type(exc).__name__}: {exc}'
-                )
-            xis = {}
+        xis = lineup_cache.get(int(target["match_id"]), {})
 
-        if len(xis) == 2:
-            diagnostics["complete_lineup_files"] += 1
-            if i >= min_train:
-                diagnostics["post_warmup_complete"] += 1
+        if len(xis) == 2 and i >= min_train:
+            diagnostics["post_warmup_complete"] += 1
 
         home_xi = xis.get(int(target["home_team_id"]))
         away_xi = xis.get(int(target["away_team_id"]))
@@ -171,10 +164,10 @@ def run_benchmark(
             state.update(int(target["away_team_id"]), away_xi)
 
     print("XI_DIAGNOSTICS", diagnostics)
-    if first_errors:
+    if lineup_fetch["first_errors"]:
         print("XI_FIRST_ERRORS")
-        for error in first_errors:
-            print(error)
+        for match_id, error in lineup_fetch["first_errors"].items():
+            print(f"{match_id}: {error}")
 
     return pd.DataFrame(line_rows), pd.DataFrame(match_rows)
 
