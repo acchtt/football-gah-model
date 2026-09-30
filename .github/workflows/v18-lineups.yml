@@ -16,18 +16,18 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
         include:
-          - label: BUNDESLIGA_2023_24
-            competition_id: 9
-            season_id: 281
-          - label: LIGUE_1_2022_23
-            competition_id: 7
-            season_id: 235
+          - label: EPL_2015_16
+            competition_id: 2
+            season_id: 27
+          - label: SERIE_A_2015_16
+            competition_id: 12
+            season_id: 27
 
     steps:
       - uses: actions/checkout@v4
