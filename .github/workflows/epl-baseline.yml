@@ -9,6 +9,14 @@ on:
       - "benchmark_epl.py"
       - "requirements.txt"
       - ".github/workflows/epl-baseline.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/**"
+      - "tests/**"
+      - "benchmark_epl.py"
+      - "requirements.txt"
+      - ".github/workflows/epl-baseline.yml"
   workflow_dispatch:
 
 permissions:
@@ -36,6 +44,7 @@ jobs:
         run: python benchmark_epl.py --output benchmarks/epl_baseline.md
 
       - name: Commit benchmark report
+        if: github.event_name == 'push'
         run: |
           if git diff --quiet -- benchmarks/epl_baseline.md; then
             echo "Benchmark report unchanged"
