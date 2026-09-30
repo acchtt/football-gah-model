@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 from urllib.request import Request, urlopen
 
@@ -56,6 +57,40 @@ def load_statsbomb_starting_xi(match_id: int) -> dict[int, tuple[int, ...]]:
         if len(starters) == 11:
             out[int(team["team_id"])] = tuple(sorted(starters))
     return out
+
+
+def load_statsbomb_starting_xis(
+    match_ids,
+    max_workers: int = 8,
+) -> tuple[dict[int, dict[int, tuple[int, ...]]], dict]:
+    """Fetch many StatsBomb lineup files concurrently for benchmark use."""
+    ids = [int(x) for x in match_ids]
+    results: dict[int, dict[int, tuple[int, ...]]] = {}
+    errors: dict[int, str] = {}
+
+    with ThreadPoolExecutor(max_workers=int(max_workers)) as pool:
+        futures = {
+            pool.submit(load_statsbomb_starting_xi, match_id): match_id
+            for match_id in ids
+        }
+        for future in as_completed(futures):
+            match_id = futures[future]
+            try:
+                results[match_id] = future.result()
+            except Exception as exc:
+                results[match_id] = {}
+                if len(errors) < 10:
+                    errors[match_id] = f"{type(exc).__name__}: {exc}"
+
+    diagnostics = {
+        "requested": len(ids),
+        "fetch_errors": sum(1 for match_id in ids if not results.get(match_id) and match_id in errors),
+        "complete_lineup_files": sum(
+            1 for match_id in ids if len(results.get(match_id, {})) == 2
+        ),
+        "first_errors": errors,
+    }
+    return results, diagnostics
 
 
 class LineupContinuityState:
