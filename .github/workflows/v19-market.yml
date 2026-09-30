@@ -1,0 +1,44 @@
+name: GAH v1.9 market-aware benchmark
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/market_aware.py"
+      - "gah/market_data.py"
+      - "tests/test_market_aware.py"
+      - "benchmark_v19_market.py"
+      - ".github/workflows/v19-market.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        competition:
+          - EPL
+          - BUNDESLIGA
+          - LA_LIGA
+          - SERIE_A
+          - LIGUE_1
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+      - name: Run market-aware benchmark
+        run: python benchmark_v19_market.py --competition "${{ matrix.competition }}"
