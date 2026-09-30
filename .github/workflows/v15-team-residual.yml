@@ -1,0 +1,45 @@
+name: GAH v1.5 team residual totals
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/**"
+      - "tests/**"
+      - "benchmark_v15_residual.py"
+      - ".github/workflows/v15-team-residual.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        competition:
+          - EPL
+          - BUNDESLIGA
+          - LA_LIGA
+          - SERIE_A
+          - LIGUE_1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+
+      - name: Run ${{ matrix.competition }} team residual experiment
+        run: python benchmark_v15_residual.py --competition "${{ matrix.competition }}"
