@@ -1,11 +1,11 @@
-# Football GAH v1.1
+# Football GAH v1.2
 
 A code-first baseline for forecasting:
 
 - **Goal totals** (Asian O/U lines)
 - **Asian handicap** (home/away, including quarter lines)
 
-The model first predicts a **full score distribution** using a time-decayed Dixon-Coles model. All market probabilities are derived from that same score matrix.
+The model first predicts a **full score distribution** using a time-decayed Dixon-Coles model. Asian handicap is priced directly from that distribution. Totals use a leakage-safe online blend between the Dixon-Coles distribution and the historical league scoring distribution; the displayed point total is the predictive median.
 
 ## Why this exists
 
@@ -126,11 +126,19 @@ Market calibration and ROI/CLV evaluation should be layered on after a bookmaker
 - O2.5 Brier improved vs both v1 and naive baseline
 - Total-goal likelihood improved vs both v1 and naive baseline
 
-### GAH v1.2
-- Reduce remaining total-goals MAE gap
-- Probability reliability plots
-- Competition-specific home advantage
-- Tail/overdispersion testing
+### GAH v1.2 — promoted
+- Predictive median for the total-goals point forecast
+- Total MAE improved from 1.3190 to 1.2987 across the EPL benchmark
+- Validated v1.1 totals blend wired into the real prediction CLI
+- O/U prices use blended totals distribution
+- Asian handicap remains pure Dixon-Coles
+- Regime-Poisson and negative-binomial experiments rejected
+
+### GAH v1.3
+- Probability reliability plots and calibration curves
+- Calibration across multiple total/AH lines, not only O2.5 and Home -0.5
+- Competition-specific validation
+- Faster persisted calibration artifacts for live prediction
 
 ### GAH v2
 - xG
