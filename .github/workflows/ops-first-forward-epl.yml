@@ -1,0 +1,27 @@
+name: First real GAH forward probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ops/first_forward_epl_20261010.py"
+      - ".github/workflows/ops-first-forward-epl.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run frozen GAH v1.4/v1.3 probe
+        env:
+          PYTHONPATH: .
+        run: python ops/first_forward_epl_20261010.py
