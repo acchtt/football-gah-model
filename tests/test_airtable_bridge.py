@@ -13,6 +13,7 @@ from gah.airtable_bridge import (
     lifecycle_operation,
     operation_from_manifest,
     operation_manifest,
+    prospective_outcome_operation,
     settlement_operations,
     snapshot_operation,
     stable_record_id,
@@ -299,3 +300,20 @@ def test_manifest_round_trip():
     assert operation_from_manifest(
         operation_manifest(op)
     ) == op
+
+
+def test_prospective_outcome_can_settle_without_lifecycle_event():
+    op = prospective_outcome_operation(
+        snapshot_id="s-pass",
+        outcome_fields={
+            "Outcome Status": "Settled",
+            "Settlement": "full_loss",
+            "Net Return": -1.0,
+            "Closing AH Line": -0.5,
+            "Closing Market Probability": 0.55,
+        },
+    )
+    assert op.kind == BridgeOperationKind.UPDATE_EXISTING
+    assert op.fields["Snapshot ID"] == "s-pass"
+    assert op.fields["Settlement ID"].startswith("v28set-")
+    assert "Last Lifecycle Event ID" not in op.fields
