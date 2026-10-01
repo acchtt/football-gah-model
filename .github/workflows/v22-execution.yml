@@ -1,0 +1,31 @@
+name: GAH v2.2 execution decay
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/execution.py"
+      - "execution_cli.py"
+      - "tests/test_execution.py"
+      - "benchmarks/v22_execution_protocol.md"
+      - ".github/workflows/v22-execution.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
