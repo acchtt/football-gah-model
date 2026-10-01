@@ -1,0 +1,31 @@
+name: GAH v2.10 operational quality control
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/quality_control.py"
+      - "quality_control_cli.py"
+      - "tests/test_quality_control.py"
+      - "benchmarks/v210_operational_quality_control.md"
+      - ".github/workflows/v210-quality-control.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
