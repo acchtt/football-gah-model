@@ -215,3 +215,29 @@ def test_compact_report_contains_only_operational_status():
     assert "settled=0/100" in text
     assert "span=0/30d" in text
     assert "recommend" not in text.lower()
+
+
+def test_all_pending_airtable_shape_keeps_readiness_available():
+    # Airtable omits every blank settlement/closing field while the sample is
+    # pending. The report must still interpret that as valid forward state.
+    record = snapshot("s1", "m1", execution_state="WAIT")
+    fields = record["fields"]
+    for key in (
+        "Settlement",
+        "Net Return",
+        "Closing AH Line",
+        "Closing Market Probability",
+        "Entry Type",
+    ):
+        fields.pop(key, None)
+
+    state = state_from_records([record], [])
+    report = build_operator_report(
+        state,
+        generated_at=T0 + timedelta(hours=1),
+    )
+    assert report.readiness is not None
+    assert report.readiness.status == "WAIT"
+    assert report.readiness.settled_snapshots == 0
+    assert report.readiness.snapshots_remaining == 100
+    assert report.health.status == "OK"
