@@ -1,0 +1,27 @@
+name: Four-league real GAH forward probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ops/first_forward_four_leagues_20261009.py"
+      - ".github/workflows/ops-first-forward-four-leagues.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run frozen GAH v1.4/v1.3 four-league probe
+        env:
+          PYTHONPATH: .
+        run: python ops/first_forward_four_leagues_20261009.py
