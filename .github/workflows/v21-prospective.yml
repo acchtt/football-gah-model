@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - "gah/prospective.py"
+      - "prospective_cli.py"
       - "tests/test_prospective.py"
+      - "AIRTABLE.md"
       - "benchmarks/v21_prospective_protocol.md"
       - ".github/workflows/v21-prospective.yml"
   workflow_dispatch:
