@@ -274,15 +274,17 @@ def live_operation(
     )
 
 
-def settlement_operations(
+def prospective_outcome_operation(
     *,
-    match_id: str,
     snapshot_id: str,
-    event: LifecycleEvent,
     outcome_fields: Mapping[str, Any],
-) -> BridgeBatch:
-    if event.state != LifecycleState.SETTLED:
-        raise ValueError("Settlement requires a SETTLED lifecycle event.")
+) -> BridgeOperation:
+    """Settle the forward-only prospective observation.
+
+    This is deliberately separate from the decision lifecycle: a captured
+    snapshot still needs an outcome for v2.1 review even when execution later
+    PASSes and therefore must not transition to lifecycle SETTLED.
+    """
     fields = dict(outcome_fields)
     if fields.get("Outcome Status") != "Settled":
         raise ValueError("Outcome Status must be Settled.")
@@ -290,12 +292,7 @@ def settlement_operations(
     update_fields = dict(fields)
     update_fields["Snapshot ID"] = snapshot_id
     update_fields["Settlement ID"] = sid
-    update_fields["Last Lifecycle Event ID"] = lifecycle_event_id(
-        match_id,
-        event,
-        snapshot_id=snapshot_id,
-        payload={"kind": "settlement", "settlement_id": sid},
-    )
+    update_fields["Bridge Schema Version"] = BRIDGE_SCHEMA_VERSION
     update = BridgeOperation(
         table=PROSPECTIVE_AH_TABLE_ID,
         key_field="Snapshot ID",
@@ -303,6 +300,25 @@ def settlement_operations(
         fields=update_fields,
         kind=BridgeOperationKind.UPDATE_EXISTING,
     )
+    update.validate()
+    return update
+
+
+def settlement_operations(
+    *,
+    match_id: str,
+    snapshot_id: str,
+    event: LifecycleEvent,
+    outcome_fields: Mapping[str, Any],
+) -> BridgeBatch:
+    """Settle an actually-entered decision and link it to its lifecycle."""
+    if event.state != LifecycleState.SETTLED:
+        raise ValueError("Settlement requires a SETTLED lifecycle event.")
+    update = prospective_outcome_operation(
+        snapshot_id=snapshot_id,
+        outcome_fields=outcome_fields,
+    )
+    sid = str(update.fields["Settlement ID"])
     lifecycle = lifecycle_operation(
         match_id,
         event,
@@ -310,9 +326,18 @@ def settlement_operations(
         payload={
             "kind": "settlement",
             "settlement_id": sid,
-            "settlement": fields["Settlement"],
-            "net_return": fields["Net Return"],
+            "settlement": update.fields["Settlement"],
+            "net_return": update.fields["Net Return"],
         },
+    )
+    linked_fields = dict(update.fields)
+    linked_fields["Last Lifecycle Event ID"] = lifecycle.key_value
+    update = BridgeOperation(
+        table=update.table,
+        key_field=update.key_field,
+        key_value=update.key_value,
+        fields=linked_fields,
+        kind=update.kind,
     )
     update.validate()
     lifecycle.validate()
