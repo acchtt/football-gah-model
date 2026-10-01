@@ -453,27 +453,66 @@ class AirtableBridgeClient:
     def _formula_string(value: str) -> str:
         return value.replace("\\", "\\\\").replace("'", "\\'")
 
-    def _find(
+    def list_records(
         self,
-        op: BridgeOperation,
+        table: str,
+        *,
+        page_size: int = 100,
+    ) -> list[dict[str, Any]]:
+        if not table.strip():
+            raise ValueError("table is required.")
+        if not 1 <= int(page_size) <= 100:
+            raise ValueError("page_size must be between 1 and 100.")
+
+        records: list[dict[str, Any]] = []
+        offset: str | None = None
+        while True:
+            query = {"pageSize": str(int(page_size))}
+            if offset is not None:
+                query["offset"] = offset
+            data = self._request("GET", table, query=query)
+            records.extend(list(data.get("records", [])))
+            raw_offset = data.get("offset")
+            if raw_offset in (None, ""):
+                break
+            offset = str(raw_offset)
+        return records
+
+    def find_record(
+        self,
+        table: str,
+        key_field: str,
+        key_value: str,
     ) -> dict[str, Any] | None:
+        if not table.strip() or not key_field.strip() or not key_value.strip():
+            raise ValueError("table, key_field and key_value are required.")
         formula = (
-            "{" + op.key_field + "}='"
-            + self._formula_string(op.key_value)
+            "{" + key_field + "}='"
+            + self._formula_string(key_value)
             + "'"
         )
         data = self._request(
             "GET",
-            op.table,
+            table,
             query={"filterByFormula": formula, "maxRecords": "2"},
         )
         records = list(data.get("records", []))
         if len(records) > 1:
             raise ValueError(
                 "Duplicate Airtable records already exist for "
-                f"{op.key_field}={op.key_value}."
+                f"{key_field}={key_value}."
             )
         return records[0] if records else None
+
+    def _find(
+        self,
+        op: BridgeOperation,
+    ) -> dict[str, Any] | None:
+        return self.find_record(
+            op.table,
+            op.key_field,
+            op.key_value,
+        )
 
     @staticmethod
     def _same_subset(
