@@ -46,3 +46,11 @@ Status: operational infrastructure only. No forecasting or selection logic is ch
 - Schema Version
 
 The bridge is intentionally operational. It does not rank matches, alter GAH probabilities, or authorize betting changes.
+
+
+## Prospective outcome vs entered settlement
+
+A v2.1 snapshot always receives its prospective outcome when known, including
+when execution later passes. That update does not manufacture a `SETTLED`
+lifecycle transition. `SETTLED` lifecycle events remain reserved for
+actually-entered decisions, preserving the v2.6 state machine.
