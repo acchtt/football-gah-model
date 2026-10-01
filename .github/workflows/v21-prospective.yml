@@ -1,0 +1,30 @@
+name: GAH v2.1 prospective protocol
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "gah/prospective.py"
+      - "tests/test_prospective.py"
+      - "benchmarks/v21_prospective_protocol.md"
+      - ".github/workflows/v21-prospective.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q
