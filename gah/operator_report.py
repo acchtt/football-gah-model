@@ -119,13 +119,13 @@ def _normalized_frame(state: AirtableState) -> pd.DataFrame:
     }
     frame = frame.rename(columns=rename)
 
-    # An empty forward datastore is a valid initial operational state, not a
-    # malformed table. Give v2.10/v2.7 their expected schema so the frozen
-    # gate can report WAIT 0/100 rather than "unavailable".
-    if len(frame) == 0:
-        for column in _CANONICAL_EMPTY_COLUMNS:
-            if column not in frame.columns:
-                frame[column] = pd.Series(dtype="object")
+    # Airtable omits blank fields from returned records. Normalize the
+    # canonical prospective schema for every state, not only an empty table,
+    # so an all-pending forward sample still exposes closing/settlement columns
+    # as blank and the frozen gate can report WAIT instead of UNAVAILABLE.
+    for column in _CANONICAL_EMPTY_COLUMNS:
+        if column not in frame.columns:
+            frame[column] = pd.Series([None] * len(frame), index=frame.index, dtype="object")
     return frame
 
 
